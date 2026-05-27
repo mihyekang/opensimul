@@ -80,13 +80,15 @@ class AzureOpenAIClient:
         last_exc: Exception | None = None
         for attempt in range(self.config.max_retries):
             try:
-                with self._client.chat.completions.stream(
+                stream = self._client.chat.completions.create(
                     model=self.config.deployment,
                     messages=messages,
                     max_completion_tokens=self.config.max_completion_tokens,
-                ) as stream:
-                    for text in stream.text_stream:
-                        yield text
+                    stream=True,
+                )
+                for chunk in stream:
+                    if chunk.choices and chunk.choices[0].delta.content:
+                        yield chunk.choices[0].delta.content
                 return
             except RateLimitError as e:
                 wait = self.config.retry_delay * (2 ** attempt)
