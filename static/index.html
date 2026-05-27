@@ -430,9 +430,20 @@
   sendBtn.addEventListener("click", send);
   document.getElementById("reset-btn").addEventListener("click", resetChat);
 
+  // ── session ──
+  function getSessionId() {
+    let sid = localStorage.getItem("chat_session_id");
+    if (!sid) {
+      sid = crypto.randomUUID();
+      localStorage.setItem("chat_session_id", sid);
+    }
+    return sid;
+  }
+  const SESSION_ID = getSessionId();
+
   // ── info ──
   async function loadInfo() {
-    const d = await fetch("/info").then(r => r.json());
+    const d = await fetch(`/info?session_id=${SESSION_ID}`).then(r => r.json());
     document.getElementById("deployment-label").textContent = `모델: ${d.deployment}`;
     document.getElementById("rate-label").textContent =
       `환율: 1 USD = ₩${d.usd_to_krw.toLocaleString("ko-KR", { maximumFractionDigits: 1 })} (${d.rate_date})`;
@@ -464,7 +475,7 @@
   });
 
   async function renderMemory() {
-    const mem = await fetch("/memory").then(r => r.json());
+    const mem = await fetch(`/memory?session_id=${SESSION_ID}`).then(r => r.json());
     const list = document.getElementById("memory-list");
     list.innerHTML = "";
     const entries = Object.entries(mem);
@@ -482,7 +493,7 @@
     });
     list.querySelectorAll(".mem-del").forEach(btn => {
       btn.addEventListener("click", async () => {
-        await fetch(`/memory/${encodeURIComponent(btn.dataset.key)}`, { method: "DELETE" });
+        await fetch(`/memory/${encodeURIComponent(btn.dataset.key)}?session_id=${SESSION_ID}`, { method: "DELETE" });
         renderMemory();
       });
     });
@@ -492,7 +503,7 @@
     const k = document.getElementById("mem-key-input").value.trim();
     const v = document.getElementById("mem-val-input").value.trim();
     if (!k || !v) return;
-    await fetch("/memory", {
+    await fetch(`/memory?session_id=${SESSION_ID}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ key: k, value: v }),
@@ -580,7 +591,7 @@
     const resp = await fetch("/chat/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: msg }),
+      body: JSON.stringify({ message: msg, session_id: SESSION_ID }),
     });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 
@@ -616,7 +627,7 @@
     const resp = await fetch("/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: msg }),
+      body: JSON.stringify({ message: msg, session_id: SESSION_ID }),
     });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
@@ -657,6 +668,7 @@
       const formData = new FormData();
       formData.append("image", file);
       formData.append("prompt", prompt);
+      formData.append("session_id", SESSION_ID);
 
       const resp = await fetch("/analyze", { method: "POST", body: formData });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -688,7 +700,7 @@
     await fetch("/reset", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ session_id: SESSION_ID }),
     });
     chatWrap.innerHTML = "";
     clearImage();

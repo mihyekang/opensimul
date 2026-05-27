@@ -6,6 +6,7 @@ Run: uvicorn app:app --reload
 import asyncio
 import base64
 import json
+import logging
 import os
 from contextlib import asynccontextmanager
 
@@ -15,11 +16,16 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 import db
-from azure_openai_client import AzureOpenAIClient, ClientConfig
+from azure_openai_client import ClientConfig
 from repl import fetch_usd_to_krw
+from session_manager import SessionManager
+
+logger = logging.getLogger(__name__)
+SESSION_RETENTION_DAYS = 7
+
 
 class AppState:
-    client: AzureOpenAIClient
+    session_manager: SessionManager
     usd_to_krw: float
     rate_date: str
     db_enabled: bool
@@ -32,15 +38,21 @@ state = AppState()
 async def lifespan(app: FastAPI):
     config = ClientConfig()
     state.usd_to_krw, state.rate_date = fetch_usd_to_krw(verify_ssl=config.verify_ssl)
-    state.client = AzureOpenAIClient(config=config, system_prompt="You are a helpful assistant.")
     state.db_enabled = False
+
     if os.environ.get("POSTGRESQL_CONNECTION_STRING"):
         try:
             db.init_db()
             state.db_enabled = True
+            loop = asyncio.get_event_loop()
+            deleted = await loop.run_in_executor(
+                None, lambda: db.cleanup_old_sessions(SESSION_RETENTION_DAYS)
+            )
+            logger.info("만료 세션 %d개 정리 완료", deleted)
         except Exception as e:
-            import logging
-            logging.getLogger(__name__).warning("DB 초기화 실패 — DB 저장 비활성화: %s", e)
+            logger.warning("DB 초기화 실패 — DB 저장 비활성화: %s", e)
+
+    state.session_manager = SessionManager(config, db_enabled=state.db_enabled)
     yield
 
 
@@ -52,9 +64,11 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 class ChatRequest(BaseModel):
     message: str
+    session_id: str = ""
 
 
 class ResetRequest(BaseModel):
+    session_id: str = ""
     system_prompt: str = "You are a helpful assistant."
 
 
@@ -65,16 +79,32 @@ class MemorySetRequest(BaseModel):
 
 # ---------- helpers ----------
 
-def _build_usage(usage, turn_cost_usd: float) -> dict:
+def _client(session_id: str):
+    return state.session_manager.get_client(session_id)
+
+
+def _build_usage(client, usage, turn_cost_usd: float) -> dict:
     return {
         "prompt_tokens": usage.prompt_tokens,
         "completion_tokens": usage.completion_tokens,
         "turn_cost_usd": turn_cost_usd,
         "turn_cost_krw": turn_cost_usd * state.usd_to_krw,
-        "total_tokens": state.client.total_tokens,
-        "total_cost_usd": state.client.total_cost,
-        "total_cost_krw": state.client.total_cost * state.usd_to_krw,
+        "total_tokens": client.total_tokens,
+        "total_cost_usd": client.total_cost,
+        "total_cost_krw": client.total_cost * state.usd_to_krw,
     }
+
+
+async def _save_turn(session_id: str, user_msg: str, assistant_msg: str):
+    if state.db_enabled and session_id:
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, lambda: (
+            db.touch_session(session_id),
+            db.save_messages(session_id, [
+                {"role": "user", "content": user_msg},
+                {"role": "assistant", "content": assistant_msg},
+            ])
+        ))
 
 
 # ---------- routes ----------
@@ -85,70 +115,80 @@ async def index():
         return f.read()
 
 
-@app.post("/reset")
-async def reset(req: ResetRequest):
-    state.client.reset(system_prompt=req.system_prompt)
-    return {"ok": True}
-
-
 @app.get("/info")
-async def info():
+async def info(session_id: str = ""):
+    client = _client(session_id)
     return {
-        "deployment": state.client.config.deployment,
+        "deployment": client.config.deployment,
         "usd_to_krw": state.usd_to_krw,
         "rate_date": state.rate_date,
-        "total_tokens": state.client.total_tokens,
-        "total_cost_usd": state.client.total_cost,
-        "total_cost_krw": state.client.total_cost * state.usd_to_krw,
+        "total_tokens": client.total_tokens,
+        "total_cost_usd": client.total_cost,
+        "total_cost_krw": client.total_cost * state.usd_to_krw,
         "db_enabled": state.db_enabled,
-        "current_turns": state.client.current_turns,
-        "max_history_turns": state.client.config.max_history_turns,
+        "current_turns": client.current_turns,
+        "max_history_turns": client.config.max_history_turns,
     }
 
 
-@app.get("/memory")
-async def get_memory():
-    return state.client.get_memory()
-
-
-@app.post("/memory")
-async def set_memory(req: MemorySetRequest):
-    state.client.set_memory(req.key, req.value)
-    return {"ok": True, "memory": state.client.get_memory()}
-
-
-@app.delete("/memory/{key}")
-async def delete_memory(key: str):
-    existed = state.client.delete_memory(key)
-    return {"ok": existed, "memory": state.client.get_memory()}
-
-
-@app.delete("/memory")
-async def clear_memory():
-    state.client.clear_memory()
+@app.post("/reset")
+async def reset(req: ResetRequest):
+    state.session_manager.invalidate(req.session_id)
+    if state.db_enabled and req.session_id:
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, lambda: db.clear_messages(req.session_id))
     return {"ok": True}
 
 
+@app.get("/memory")
+async def get_memory(session_id: str = ""):
+    return _client(session_id).get_memory()
+
+
+@app.post("/memory")
+async def set_memory(req: MemorySetRequest, session_id: str = ""):
+    c = _client(session_id)
+    c.set_memory(req.key, req.value)
+    return {"ok": True, "memory": c.get_memory()}
+
+
+@app.delete("/memory/{key}")
+async def delete_memory(key: str, session_id: str = ""):
+    c = _client(session_id)
+    existed = c.delete_memory(key)
+    return {"ok": existed, "memory": c.get_memory()}
+
+
+@app.delete("/memory")
+async def clear_memory(session_id: str = ""):
+    _client(session_id).clear_memory()
+    return {"ok": True}
+
+
+# ---------- chat ----------
+
 @app.post("/chat")
 async def chat(req: ChatRequest):
-    """Non-streaming fallback — use when corporate proxy blocks SSE."""
+    c = _client(req.session_id)
     loop = asyncio.get_event_loop()
-    reply, usage = await loop.run_in_executor(None, lambda: state.client.chat(req.message))
-    turn_cost_usd = usage.cost(state.client.config.input_price_per_m, state.client.config.output_price_per_m)
-    return {"reply": reply, "usage": _build_usage(usage, turn_cost_usd)}
+    reply, usage = await loop.run_in_executor(None, lambda: c.chat(req.message))
+    turn_cost_usd = usage.cost(c.config.input_price_per_m, c.config.output_price_per_m)
+    await _save_turn(req.session_id, req.message, reply)
+    return {"reply": reply, "usage": _build_usage(c, usage, turn_cost_usd)}
 
 
 @app.post("/chat/stream")
 async def chat_stream(req: ChatRequest):
-    """SSE endpoint — streams tokens then sends a final [DONE] event with usage."""
+    c = _client(req.session_id)
 
     async def event_generator():
         loop = asyncio.get_event_loop()
         queue: asyncio.Queue[str | None] = asyncio.Queue()
+        collected: list[str] = []
 
         def produce():
             try:
-                for token in state.client.stream_chat(req.message):
+                for token in c.stream_chat(req.message):
                     loop.call_soon_threadsafe(queue.put_nowait, token)
             finally:
                 loop.call_soon_threadsafe(queue.put_nowait, None)
@@ -159,46 +199,46 @@ async def chat_stream(req: ChatRequest):
             token = await queue.get()
             if token is None:
                 break
+            collected.append(token)
             yield f"data: {json.dumps({'token': token})}\n\n"
 
-        last = state.client.last_usage
+        assistant_reply = "".join(collected)
+        await _save_turn(req.session_id, req.message, assistant_reply)
+
+        last = c.last_usage
         if last:
-            turn_cost_usd = last.cost(
-                state.client.config.input_price_per_m,
-                state.client.config.output_price_per_m,
-            )
-            yield f"data: {json.dumps({'done': True, 'usage': _build_usage(last, turn_cost_usd)})}\n\n"
+            turn_cost_usd = last.cost(c.config.input_price_per_m, c.config.output_price_per_m)
+            yield f"data: {json.dumps({'done': True, 'usage': _build_usage(c, last, turn_cost_usd)})}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
+
+# ---------- image analysis ----------
 
 @app.post("/analyze")
 async def analyze(
     image: UploadFile = File(...),
     prompt: str = Form(default="이 이미지를 자세히 분석해주세요."),
+    session_id: str = Form(default=""),
 ):
-    """Accept an image upload, run vision analysis, save result to PostgreSQL."""
+    c = _client(session_id)
     content = await image.read()
     mime_type = image.content_type or "image/jpeg"
     image_b64 = base64.b64encode(content).decode()
 
     loop = asyncio.get_event_loop()
     analysis, usage = await loop.run_in_executor(
-        None, lambda: state.client.analyze_image(image_b64, mime_type, prompt)
+        None, lambda: c.analyze_image(image_b64, mime_type, prompt)
     )
-    turn_cost_usd = usage.cost(state.client.config.input_price_per_m, state.client.config.output_price_per_m)
+    turn_cost_usd = usage.cost(c.config.input_price_per_m, c.config.output_price_per_m)
 
     saved_id = None
     if state.db_enabled:
         row = await loop.run_in_executor(
             None,
             lambda: db.save_analysis(
-                image.filename or "unknown",
-                prompt,
-                analysis,
-                usage.prompt_tokens,
-                usage.completion_tokens,
-                turn_cost_usd,
+                image.filename or "unknown", prompt, analysis,
+                usage.prompt_tokens, usage.completion_tokens, turn_cost_usd,
             ),
         )
         saved_id = row["id"]
@@ -217,7 +257,6 @@ async def analyze(
 
 @app.get("/analyses")
 async def analyses():
-    """Return recent image analysis records."""
     if not state.db_enabled:
         return []
     loop = asyncio.get_event_loop()
