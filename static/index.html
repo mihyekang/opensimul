@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Azure OpenAI Chat</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -66,22 +67,26 @@
       flex-direction: column;
       max-width: 75%;
     }
-    .bubble-row.user { align-self: flex-end; align-items: flex-end; }
+    .bubble-row.user  { align-self: flex-end;   align-items: flex-end; }
     .bubble-row.assistant { align-self: flex-start; align-items: flex-start; }
 
     .bubble {
       padding: 10px 14px;
       border-radius: 16px;
-      line-height: 1.6;
       font-size: 0.9rem;
-      white-space: pre-wrap;
+      line-height: 1.6;
       word-break: break-word;
     }
+
+    /* user bubble — plain text */
     .user .bubble {
       background: #0078d4;
       color: #fff;
       border-bottom-right-radius: 4px;
+      white-space: pre-wrap;
     }
+
+    /* assistant bubble — markdown host */
     .assistant .bubble {
       background: #fff;
       color: #1a1a1a;
@@ -89,18 +94,106 @@
       border-bottom-left-radius: 4px;
     }
 
+    /* streaming: plain text with cursor */
+    .assistant .bubble.streaming {
+      white-space: pre-wrap;
+    }
+
+    /* ── markdown styles ── */
+    .assistant .bubble h1,
+    .assistant .bubble h2,
+    .assistant .bubble h3,
+    .assistant .bubble h4 {
+      margin: 0.9em 0 0.4em;
+      font-weight: 600;
+      line-height: 1.3;
+    }
+    .assistant .bubble h1 { font-size: 1.25em; }
+    .assistant .bubble h2 { font-size: 1.1em; }
+    .assistant .bubble h3 { font-size: 1em; }
+
+    .assistant .bubble p { margin: 0.5em 0; }
+    .assistant .bubble p:first-child { margin-top: 0; }
+    .assistant .bubble p:last-child  { margin-bottom: 0; }
+
+    .assistant .bubble ul,
+    .assistant .bubble ol {
+      margin: 0.5em 0 0.5em 1.4em;
+    }
+    .assistant .bubble li { margin: 0.2em 0; }
+
+    .assistant .bubble blockquote {
+      border-left: 3px solid #0078d4;
+      margin: 0.6em 0;
+      padding: 4px 12px;
+      color: #555;
+      background: #f7f9fc;
+      border-radius: 0 6px 6px 0;
+    }
+
+    .assistant .bubble a { color: #0078d4; text-decoration: underline; }
+
+    .assistant .bubble code {
+      background: #f3f4f6;
+      border: 1px solid #e5e7eb;
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 0.85em;
+    }
+
+    .assistant .bubble pre {
+      margin: 0.6em 0;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid #e5e7eb;
+    }
+
+    .assistant .bubble pre code {
+      display: block;
+      padding: 12px 14px;
+      overflow-x: auto;
+      background: #f6f8fa;
+      border: none;
+      border-radius: 0;
+      font-size: 0.83em;
+      line-height: 1.55;
+    }
+
+    .assistant .bubble table {
+      border-collapse: collapse;
+      margin: 0.6em 0;
+      font-size: 0.85em;
+      width: 100%;
+    }
+    .assistant .bubble th,
+    .assistant .bubble td {
+      border: 1px solid #dde1e7;
+      padding: 6px 10px;
+      text-align: left;
+    }
+    .assistant .bubble th { background: #f3f4f6; font-weight: 600; }
+    .assistant .bubble tr:nth-child(even) td { background: #fafafa; }
+
+    .assistant .bubble hr {
+      border: none;
+      border-top: 1px solid #e0e0e0;
+      margin: 0.8em 0;
+    }
+
+    /* ── typing cursor ── */
+    .typing-cursor::after {
+      content: "▋";
+      animation: blink 0.7s step-end infinite;
+    }
+    @keyframes blink { 50% { opacity: 0; } }
+
     .usage-tag {
       font-size: 0.68rem;
       color: #999;
       margin-top: 4px;
       padding: 0 4px;
     }
-
-    .typing-cursor::after {
-      content: "▋";
-      animation: blink 0.7s step-end infinite;
-    }
-    @keyframes blink { 50% { opacity: 0; } }
 
     footer {
       width: 100%;
@@ -167,20 +260,30 @@
   </div>
 </footer>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script>
+  // configure marked: use highlight.js for fenced code blocks
+  marked.setOptions({
+    highlight: (code, lang) => {
+      const language = hljs.getLanguage(lang) ? lang : "plaintext";
+      return hljs.highlight(code, { language }).value;
+    },
+    breaks: true,   // single newline → <br>
+    gfm: true,
+  });
+
   const chatWrap = document.getElementById("chat-wrap");
   const inputEl  = document.getElementById("input");
   const sendBtn  = document.getElementById("send-btn");
 
   let streaming = false;
 
-  // ── auto-grow textarea ──
   inputEl.addEventListener("input", () => {
     inputEl.style.height = "auto";
     inputEl.style.height = inputEl.scrollHeight + "px";
   });
 
-  // ── Enter to send (Shift+Enter = newline) ──
   inputEl.addEventListener("keydown", e => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
   });
@@ -188,18 +291,18 @@
   sendBtn.addEventListener("click", send);
   document.getElementById("reset-btn").addEventListener("click", resetChat);
 
-  // ── load info on start ──
   async function loadInfo() {
     const r = await fetch("/info");
     const d = await r.json();
     document.getElementById("deployment-label").textContent = `모델: ${d.deployment}`;
-    document.getElementById("rate-label").textContent = `환율: 1 USD = ₩${d.usd_to_krw.toLocaleString("ko-KR", {maximumFractionDigits:1})} (${d.rate_date})`;
+    document.getElementById("rate-label").textContent =
+      `환율: 1 USD = ₩${d.usd_to_krw.toLocaleString("ko-KR", { maximumFractionDigits: 1 })} (${d.rate_date})`;
     updateCostLabel(d.total_cost_usd, d.total_cost_krw, d.total_tokens);
   }
 
   function updateCostLabel(usd, krw, tokens) {
     document.getElementById("cost-label").textContent =
-      `누적: $${usd.toFixed(6)} (₩${krw.toLocaleString("ko-KR", {minimumFractionDigits:2, maximumFractionDigits:2})}) · ${tokens} tokens`;
+      `누적: $${usd.toFixed(6)} (₩${krw.toLocaleString("ko-KR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}) · ${tokens} tokens`;
   }
 
   function addBubble(role, text = "") {
@@ -207,11 +310,20 @@
     row.className = `bubble-row ${role}`;
     const bubble = document.createElement("div");
     bubble.className = "bubble";
-    bubble.textContent = text;
+    if (role === "user") {
+      bubble.textContent = text;
+    }
     row.appendChild(bubble);
     chatWrap.appendChild(row);
     chatWrap.scrollTop = chatWrap.scrollHeight;
     return { row, bubble };
+  }
+
+  function renderMarkdown(bubble, raw) {
+    bubble.classList.remove("streaming", "typing-cursor");
+    bubble.innerHTML = marked.parse(raw);
+    // apply highlight.js to any code blocks that marked didn't auto-highlight
+    bubble.querySelectorAll("pre code:not(.hljs)").forEach(el => hljs.highlightElement(el));
   }
 
   async function send() {
@@ -226,7 +338,7 @@
     addBubble("user", msg);
 
     const { row: aRow, bubble: aBubble } = addBubble("assistant");
-    aBubble.classList.add("typing-cursor");
+    aBubble.classList.add("streaming", "typing-cursor");
 
     const resp = await fetch("/chat/stream", {
       method: "POST",
@@ -237,6 +349,7 @@
     const reader = resp.body.getReader();
     const decoder = new TextDecoder();
     let buf = "";
+    let rawText = "";
 
     while (true) {
       const { value, done } = await reader.read();
@@ -251,25 +364,28 @@
         const payload = JSON.parse(line.slice(6));
 
         if (payload.token !== undefined) {
-          aBubble.textContent += payload.token;
+          rawText += payload.token;
+          aBubble.textContent = rawText;   // plain while streaming
           chatWrap.scrollTop = chatWrap.scrollHeight;
         }
 
         if (payload.done) {
-          aBubble.classList.remove("typing-cursor");
+          renderMarkdown(aBubble, rawText);  // switch to rendered markdown
+          chatWrap.scrollTop = chatWrap.scrollHeight;
+
           const u = payload.usage;
           const tag = document.createElement("div");
           tag.className = "usage-tag";
           tag.textContent =
             `${u.prompt_tokens} in / ${u.completion_tokens} out · ` +
-            `$${u.turn_cost_usd.toFixed(6)} (₩${u.turn_cost_krw.toLocaleString("ko-KR", {minimumFractionDigits:2, maximumFractionDigits:2})})`;
+            `$${u.turn_cost_usd.toFixed(6)} (₩${u.turn_cost_krw.toLocaleString("ko-KR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`;
           aRow.appendChild(tag);
           updateCostLabel(u.total_cost_usd, u.total_cost_krw, u.total_tokens);
         }
       }
     }
 
-    aBubble.classList.remove("typing-cursor");
+    renderMarkdown(aBubble, rawText);
     streaming = false;
     sendBtn.disabled = false;
     inputEl.focus();
@@ -277,7 +393,11 @@
 
   async function resetChat() {
     if (!confirm("대화 기록을 초기화할까요?")) return;
-    await fetch("/reset", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
+    await fetch("/reset", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
     chatWrap.innerHTML = "";
     await loadInfo();
   }
