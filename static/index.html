@@ -27,7 +27,6 @@
       align-items: center;
       gap: 12px;
     }
-
     header h1 { font-size: 1rem; font-weight: 600; color: #1a1a1a; }
 
     #info-bar {
@@ -37,7 +36,6 @@
       gap: 16px;
       flex-wrap: wrap;
     }
-
     #info-bar span { white-space: nowrap; }
 
     #reset-btn {
@@ -48,9 +46,11 @@
       background: #fff;
       cursor: pointer;
       color: #555;
+      white-space: nowrap;
     }
     #reset-btn:hover { background: #f5f5f5; }
 
+    /* ── chat area ── */
     #chat-wrap {
       width: 100%;
       max-width: 800px;
@@ -65,9 +65,9 @@
     .bubble-row {
       display: flex;
       flex-direction: column;
-      max-width: 75%;
+      max-width: 78%;
     }
-    .bubble-row.user  { align-self: flex-end;   align-items: flex-end; }
+    .bubble-row.user      { align-self: flex-end;   align-items: flex-end; }
     .bubble-row.assistant { align-self: flex-start; align-items: flex-start; }
 
     .bubble {
@@ -77,26 +77,28 @@
       line-height: 1.6;
       word-break: break-word;
     }
-
-    /* user bubble — plain text */
     .user .bubble {
       background: #0078d4;
       color: #fff;
       border-bottom-right-radius: 4px;
       white-space: pre-wrap;
     }
-
-    /* assistant bubble — markdown host */
     .assistant .bubble {
       background: #fff;
       color: #1a1a1a;
       border: 1px solid #e0e0e0;
       border-bottom-left-radius: 4px;
     }
+    .assistant .bubble.streaming { white-space: pre-wrap; }
 
-    /* streaming: plain text with cursor */
-    .assistant .bubble.streaming {
-      white-space: pre-wrap;
+    /* image in user bubble */
+    .bubble-img {
+      max-width: 240px;
+      max-height: 240px;
+      border-radius: 10px;
+      display: block;
+      margin-bottom: 6px;
+      object-fit: cover;
     }
 
     /* ── markdown styles ── */
@@ -111,17 +113,12 @@
     .assistant .bubble h1 { font-size: 1.25em; }
     .assistant .bubble h2 { font-size: 1.1em; }
     .assistant .bubble h3 { font-size: 1em; }
-
     .assistant .bubble p { margin: 0.5em 0; }
     .assistant .bubble p:first-child { margin-top: 0; }
     .assistant .bubble p:last-child  { margin-bottom: 0; }
-
     .assistant .bubble ul,
-    .assistant .bubble ol {
-      margin: 0.5em 0 0.5em 1.4em;
-    }
+    .assistant .bubble ol { margin: 0.5em 0 0.5em 1.4em; }
     .assistant .bubble li { margin: 0.2em 0; }
-
     .assistant .bubble blockquote {
       border-left: 3px solid #0078d4;
       margin: 0.6em 0;
@@ -130,9 +127,7 @@
       background: #f7f9fc;
       border-radius: 0 6px 6px 0;
     }
-
     .assistant .bubble a { color: #0078d4; text-decoration: underline; }
-
     .assistant .bubble code {
       background: #f3f4f6;
       border: 1px solid #e5e7eb;
@@ -141,14 +136,12 @@
       font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
       font-size: 0.85em;
     }
-
     .assistant .bubble pre {
       margin: 0.6em 0;
       border-radius: 8px;
       overflow: hidden;
       border: 1px solid #e5e7eb;
     }
-
     .assistant .bubble pre code {
       display: block;
       padding: 12px 14px;
@@ -159,7 +152,6 @@
       font-size: 0.83em;
       line-height: 1.55;
     }
-
     .assistant .bubble table {
       border-collapse: collapse;
       margin: 0.6em 0;
@@ -174,14 +166,13 @@
     }
     .assistant .bubble th { background: #f3f4f6; font-weight: 600; }
     .assistant .bubble tr:nth-child(even) td { background: #fafafa; }
-
     .assistant .bubble hr {
       border: none;
       border-top: 1px solid #e0e0e0;
       margin: 0.8em 0;
     }
 
-    /* ── typing cursor ── */
+    /* ── cursor ── */
     .typing-cursor::after {
       content: "▋";
       animation: blink 0.7s step-end infinite;
@@ -195,11 +186,50 @@
       padding: 0 4px;
     }
 
+    /* ── footer / input ── */
     footer {
       width: 100%;
       max-width: 800px;
-      padding: 12px 16px 20px;
+      padding: 8px 16px 20px;
     }
+
+    /* image preview strip above input */
+    #img-preview-wrap {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+      padding: 6px 10px;
+      background: #fff;
+      border: 1px solid #d0d0d0;
+      border-radius: 10px;
+    }
+    #img-preview-wrap.visible { display: flex; }
+    #img-preview {
+      width: 56px;
+      height: 56px;
+      object-fit: cover;
+      border-radius: 6px;
+      border: 1px solid #e0e0e0;
+    }
+    #img-preview-name {
+      flex: 1;
+      font-size: 0.78rem;
+      color: #555;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+    #img-remove-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 1rem;
+      color: #999;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    #img-remove-btn:hover { background: #f0f0f0; color: #333; }
 
     .input-row {
       display: flex;
@@ -224,6 +254,20 @@
       background: transparent;
     }
 
+    #img-btn {
+      align-self: flex-end;
+      padding: 7px 10px;
+      background: none;
+      border: 1px solid #d0d0d0;
+      border-radius: 8px;
+      font-size: 1.1rem;
+      cursor: pointer;
+      color: #555;
+      transition: background 0.15s;
+      line-height: 1;
+    }
+    #img-btn:hover { background: #f0f0f0; }
+
     #send-btn {
       align-self: flex-end;
       padding: 7px 16px;
@@ -237,6 +281,14 @@
     }
     #send-btn:hover:not(:disabled) { background: #106ebe; }
     #send-btn:disabled { background: #b0c8e8; cursor: not-allowed; }
+
+    /* DB 저장 뱃지 */
+    .saved-badge {
+      font-size: 0.65rem;
+      color: #0078d4;
+      margin-top: 2px;
+      padding: 0 4px;
+    }
   </style>
 </head>
 <body>
@@ -254,36 +306,68 @@
 <div id="chat-wrap"></div>
 
 <footer>
+  <div id="img-preview-wrap">
+    <img id="img-preview" src="" alt="preview" />
+    <span id="img-preview-name"></span>
+    <button id="img-remove-btn" title="이미지 제거">✕</button>
+  </div>
   <div class="input-row">
-    <textarea id="input" rows="1" placeholder="메시지를 입력하세요…"></textarea>
+    <textarea id="input" rows="1" placeholder="메시지를 입력하세요… (이미지 분석 시 설명을 추가할 수 있어요)"></textarea>
+    <button id="img-btn" title="이미지 업로드">🖼</button>
     <button id="send-btn">전송</button>
   </div>
+  <input type="file" id="file-input" accept="image/*" style="display:none" />
 </footer>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script>
-  // configure marked: use highlight.js for fenced code blocks
   marked.setOptions({
     highlight: (code, lang) => {
       const language = hljs.getLanguage(lang) ? lang : "plaintext";
       return hljs.highlight(code, { language }).value;
     },
-    breaks: true,   // single newline → <br>
+    breaks: true,
     gfm: true,
   });
 
-  const chatWrap = document.getElementById("chat-wrap");
-  const inputEl  = document.getElementById("input");
-  const sendBtn  = document.getElementById("send-btn");
+  const chatWrap     = document.getElementById("chat-wrap");
+  const inputEl      = document.getElementById("input");
+  const sendBtn      = document.getElementById("send-btn");
+  const imgBtn       = document.getElementById("img-btn");
+  const fileInput    = document.getElementById("file-input");
+  const previewWrap  = document.getElementById("img-preview-wrap");
+  const previewImg   = document.getElementById("img-preview");
+  const previewName  = document.getElementById("img-preview-name");
+  const imgRemoveBtn = document.getElementById("img-remove-btn");
 
-  let streaming = false;
+  let streaming    = false;
+  let pendingImage = null;   // File | null
 
+  // ── image picker ──
+  imgBtn.addEventListener("click", () => fileInput.click());
+  fileInput.addEventListener("change", () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+    pendingImage = file;
+    previewImg.src = URL.createObjectURL(file);
+    previewName.textContent = file.name;
+    previewWrap.classList.add("visible");
+    fileInput.value = "";
+  });
+  imgRemoveBtn.addEventListener("click", clearImage);
+
+  function clearImage() {
+    pendingImage = null;
+    previewImg.src = "";
+    previewWrap.classList.remove("visible");
+  }
+
+  // ── textarea ──
   inputEl.addEventListener("input", () => {
     inputEl.style.height = "auto";
     inputEl.style.height = inputEl.scrollHeight + "px";
   });
-
   inputEl.addEventListener("keydown", e => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
   });
@@ -291,9 +375,9 @@
   sendBtn.addEventListener("click", send);
   document.getElementById("reset-btn").addEventListener("click", resetChat);
 
+  // ── info ──
   async function loadInfo() {
-    const r = await fetch("/info");
-    const d = await r.json();
+    const d = await fetch("/info").then(r => r.json());
     document.getElementById("deployment-label").textContent = `모델: ${d.deployment}`;
     document.getElementById("rate-label").textContent =
       `환율: 1 USD = ₩${d.usd_to_krw.toLocaleString("ko-KR", { maximumFractionDigits: 1 })} (${d.rate_date})`;
@@ -305,14 +389,13 @@
       `누적: $${usd.toFixed(6)} (₩${krw.toLocaleString("ko-KR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}) · ${tokens} tokens`;
   }
 
+  // ── bubble helpers ──
   function addBubble(role, text = "") {
     const row = document.createElement("div");
     row.className = `bubble-row ${role}`;
     const bubble = document.createElement("div");
     bubble.className = "bubble";
-    if (role === "user") {
-      bubble.textContent = text;
-    }
+    if (role === "user" && text) bubble.textContent = text;
     row.appendChild(bubble);
     chatWrap.appendChild(row);
     chatWrap.scrollTop = chatWrap.scrollHeight;
@@ -322,7 +405,6 @@
   function renderMarkdown(bubble, raw) {
     bubble.classList.remove("streaming", "typing-cursor");
     bubble.innerHTML = marked.parse(raw);
-    // apply highlight.js to any code blocks that marked didn't auto-highlight
     bubble.querySelectorAll("pre code:not(.hljs)").forEach(el => hljs.highlightElement(el));
   }
 
@@ -333,7 +415,50 @@
       `${u.prompt_tokens} in / ${u.completion_tokens} out · ` +
       `$${u.turn_cost_usd.toFixed(6)} (₩${u.turn_cost_krw.toLocaleString("ko-KR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`;
     row.appendChild(tag);
-    updateCostLabel(u.total_cost_usd, u.total_cost_krw, u.total_tokens);
+    if (u.total_cost_usd !== undefined) {
+      updateCostLabel(u.total_cost_usd, u.total_cost_krw, u.total_tokens);
+    }
+  }
+
+  // ── send dispatcher ──
+  async function send() {
+    if (streaming) return;
+    if (pendingImage) {
+      await sendImage();
+    } else {
+      const msg = inputEl.value.trim();
+      if (!msg) return;
+      await sendText(msg);
+    }
+  }
+
+  // ── text chat ──
+  async function sendText(msg) {
+    streaming = true;
+    sendBtn.disabled = true;
+    inputEl.value = "";
+    inputEl.style.height = "auto";
+
+    addBubble("user", msg);
+    const { row: aRow, bubble: aBubble } = addBubble("assistant");
+    aBubble.classList.add("streaming", "typing-cursor");
+
+    try {
+      await sendStreaming(msg, aRow, aBubble);
+    } catch {
+      aBubble.textContent = "";
+      try {
+        await sendFallback(msg, aRow, aBubble);
+      } catch (err) {
+        aBubble.classList.remove("streaming", "typing-cursor");
+        aBubble.textContent = `오류: ${err.message}`;
+      }
+    }
+
+    aBubble.classList.remove("streaming", "typing-cursor");
+    streaming = false;
+    sendBtn.disabled = false;
+    inputEl.focus();
   }
 
   async function sendStreaming(msg, aRow, aBubble) {
@@ -346,27 +471,22 @@
 
     const reader = resp.body.getReader();
     const decoder = new TextDecoder();
-    let buf = "";
-    let rawText = "";
+    let buf = "", rawText = "";
 
     while (true) {
       const { value, done } = await reader.read();
       if (done) break;
       buf += decoder.decode(value, { stream: true });
-
       const lines = buf.split("\n");
       buf = lines.pop();
-
       for (const line of lines) {
         if (!line.startsWith("data: ")) continue;
         const payload = JSON.parse(line.slice(6));
-
         if (payload.token !== undefined) {
           rawText += payload.token;
           aBubble.textContent = rawText;
           chatWrap.scrollTop = chatWrap.scrollHeight;
         }
-
         if (payload.done) {
           renderMarkdown(aBubble, rawText);
           chatWrap.scrollTop = chatWrap.scrollHeight;
@@ -374,7 +494,6 @@
         }
       }
     }
-
     renderMarkdown(aBubble, rawText);
   }
 
@@ -391,39 +510,64 @@
     appendUsageTag(aRow, data.usage);
   }
 
-  async function send() {
-    const msg = inputEl.value.trim();
-    if (!msg || streaming) return;
+  // ── image analysis ──
+  async function sendImage() {
+    const file = pendingImage;
+    const prompt = inputEl.value.trim() || "이 이미지를 자세히 분석해주세요.";
 
     streaming = true;
     sendBtn.disabled = true;
     inputEl.value = "";
     inputEl.style.height = "auto";
+    clearImage();
 
-    addBubble("user", msg);
-
-    const { row: aRow, bubble: aBubble } = addBubble("assistant");
-    aBubble.classList.add("streaming", "typing-cursor");
-
-    try {
-      await sendStreaming(msg, aRow, aBubble);
-    } catch (streamErr) {
-      // 프록시 차단 등으로 스트리밍 실패 → 비스트리밍 fallback
-      aBubble.textContent = "";
-      try {
-        await sendFallback(msg, aRow, aBubble);
-      } catch (err) {
-        aBubble.classList.remove("streaming", "typing-cursor");
-        aBubble.textContent = `오류: ${err.message}`;
-      }
+    // user bubble: 이미지 썸네일 + 프롬프트
+    const { row: uRow, bubble: uBubble } = addBubble("user");
+    const thumb = document.createElement("img");
+    thumb.src = URL.createObjectURL(file);
+    thumb.className = "bubble-img";
+    uBubble.appendChild(thumb);
+    if (prompt !== "이 이미지를 자세히 분석해주세요.") {
+      const txt = document.createElement("div");
+      txt.textContent = prompt;
+      uBubble.appendChild(txt);
     }
 
-    aBubble.classList.remove("streaming", "typing-cursor");
+    // assistant bubble: 분석 결과
+    const { row: aRow, bubble: aBubble } = addBubble("assistant");
+    aBubble.classList.add("streaming", "typing-cursor");
+    aBubble.textContent = "이미지 분석 중…";
+
+    try {
+      const formData = new FormData();
+      formData.append("image", file);
+      formData.append("prompt", prompt);
+
+      const resp = await fetch("/analyze", { method: "POST", body: formData });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+
+      renderMarkdown(aBubble, data.analysis);
+      chatWrap.scrollTop = chatWrap.scrollHeight;
+      appendUsageTag(aRow, data.usage);
+
+      if (data.saved_id) {
+        const badge = document.createElement("div");
+        badge.className = "saved-badge";
+        badge.textContent = `✓ DB 저장 완료 (id: ${data.saved_id})`;
+        aRow.appendChild(badge);
+      }
+    } catch (err) {
+      aBubble.classList.remove("streaming", "typing-cursor");
+      aBubble.textContent = `오류: ${err.message}`;
+    }
+
     streaming = false;
     sendBtn.disabled = false;
     inputEl.focus();
   }
 
+  // ── reset ──
   async function resetChat() {
     if (!confirm("대화 기록을 초기화할까요?")) return;
     await fetch("/reset", {
@@ -432,6 +576,7 @@
       body: JSON.stringify({}),
     });
     chatWrap.innerHTML = "";
+    clearImage();
     await loadInfo();
   }
 

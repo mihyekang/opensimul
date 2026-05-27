@@ -151,6 +151,20 @@ class AzureOpenAIClient:
             yield token
         self._conversation.append({"role": "assistant", "content": "".join(collected)})
 
+    def analyze_image(self, image_b64: str, mime_type: str, prompt: str) -> tuple[str, TurnUsage]:
+        """Send an image to the vision model. Not added to conversation history."""
+        messages = [
+            {"role": "system", "content": "You are a helpful assistant that analyzes images in detail."},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{image_b64}"}},
+                    {"type": "text", "text": prompt},
+                ],
+            },
+        ]
+        return self._call_with_retry(messages)
+
     def reset(self, system_prompt: str | None = None) -> None:
         """Clear conversation history, optionally replacing the system prompt."""
         system = system_prompt or self._conversation[0]["content"]
