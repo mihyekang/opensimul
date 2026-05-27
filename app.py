@@ -73,6 +73,26 @@ async def info():
     }
 
 
+@app.post("/chat")
+async def chat(req: ChatRequest):
+    """Non-streaming fallback — use when corporate proxy blocks SSE."""
+    loop = asyncio.get_event_loop()
+    reply, usage = await loop.run_in_executor(None, lambda: state.client.chat(req.message))
+    turn_cost_usd = usage.cost(state.client.config.input_price_per_m, state.client.config.output_price_per_m)
+    return {
+        "reply": reply,
+        "usage": {
+            "prompt_tokens": usage.prompt_tokens,
+            "completion_tokens": usage.completion_tokens,
+            "turn_cost_usd": turn_cost_usd,
+            "turn_cost_krw": turn_cost_usd * state.usd_to_krw,
+            "total_tokens": state.client.total_tokens,
+            "total_cost_usd": state.client.total_cost,
+            "total_cost_krw": state.client.total_cost * state.usd_to_krw,
+        },
+    }
+
+
 @app.post("/chat/stream")
 async def chat_stream(req: ChatRequest):
     """SSE endpoint — streams tokens then sends a final [DONE] event with usage."""

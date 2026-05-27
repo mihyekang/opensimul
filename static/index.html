@@ -326,25 +326,23 @@
     bubble.querySelectorAll("pre code:not(.hljs)").forEach(el => hljs.highlightElement(el));
   }
 
-  async function send() {
-    const msg = inputEl.value.trim();
-    if (!msg || streaming) return;
+  function appendUsageTag(row, u) {
+    const tag = document.createElement("div");
+    tag.className = "usage-tag";
+    tag.textContent =
+      `${u.prompt_tokens} in / ${u.completion_tokens} out · ` +
+      `$${u.turn_cost_usd.toFixed(6)} (₩${u.turn_cost_krw.toLocaleString("ko-KR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`;
+    row.appendChild(tag);
+    updateCostLabel(u.total_cost_usd, u.total_cost_krw, u.total_tokens);
+  }
 
-    streaming = true;
-    sendBtn.disabled = true;
-    inputEl.value = "";
-    inputEl.style.height = "auto";
-
-    addBubble("user", msg);
-
-    const { row: aRow, bubble: aBubble } = addBubble("assistant");
-    aBubble.classList.add("streaming", "typing-cursor");
-
+  async function sendStreaming(msg, aRow, aBubble) {
     const resp = await fetch("/chat/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message: msg }),
     });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 
     const reader = resp.body.getReader();
     const decoder = new TextDecoder();
@@ -365,27 +363,62 @@
 
         if (payload.token !== undefined) {
           rawText += payload.token;
-          aBubble.textContent = rawText;   // plain while streaming
+          aBubble.textContent = rawText;
           chatWrap.scrollTop = chatWrap.scrollHeight;
         }
 
         if (payload.done) {
-          renderMarkdown(aBubble, rawText);  // switch to rendered markdown
+          renderMarkdown(aBubble, rawText);
           chatWrap.scrollTop = chatWrap.scrollHeight;
-
-          const u = payload.usage;
-          const tag = document.createElement("div");
-          tag.className = "usage-tag";
-          tag.textContent =
-            `${u.prompt_tokens} in / ${u.completion_tokens} out · ` +
-            `$${u.turn_cost_usd.toFixed(6)} (₩${u.turn_cost_krw.toLocaleString("ko-KR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`;
-          aRow.appendChild(tag);
-          updateCostLabel(u.total_cost_usd, u.total_cost_krw, u.total_tokens);
+          appendUsageTag(aRow, payload.usage);
         }
       }
     }
 
     renderMarkdown(aBubble, rawText);
+  }
+
+  async function sendFallback(msg, aRow, aBubble) {
+    const resp = await fetch("/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: msg }),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+    renderMarkdown(aBubble, data.reply);
+    chatWrap.scrollTop = chatWrap.scrollHeight;
+    appendUsageTag(aRow, data.usage);
+  }
+
+  async function send() {
+    const msg = inputEl.value.trim();
+    if (!msg || streaming) return;
+
+    streaming = true;
+    sendBtn.disabled = true;
+    inputEl.value = "";
+    inputEl.style.height = "auto";
+
+    addBubble("user", msg);
+
+    const { row: aRow, bubble: aBubble } = addBubble("assistant");
+    aBubble.classList.add("streaming", "typing-cursor");
+
+    try {
+      await sendStreaming(msg, aRow, aBubble);
+    } catch (streamErr) {
+      // 프록시 차단 등으로 스트리밍 실패 → 비스트리밍 fallback
+      aBubble.textContent = "";
+      try {
+        await sendFallback(msg, aRow, aBubble);
+      } catch (err) {
+        aBubble.classList.remove("streaming", "typing-cursor");
+        aBubble.textContent = `오류: ${err.message}`;
+      }
+    }
+
+    aBubble.classList.remove("streaming", "typing-cursor");
     streaming = false;
     sendBtn.disabled = false;
     inputEl.focus();
