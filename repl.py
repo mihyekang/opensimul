@@ -17,7 +17,7 @@ def fetch_usd_to_krw(verify_ssl: bool = True) -> tuple[float, str]:
     """실시간 USD/KRW 환율 조회. 실패 시 fallback 값 반환."""
     try:
         resp = httpx.get(
-            "https://api.frankfurter.app/latest",
+            "https://api.frankfurter.dev/v1/latest",
             params={"from": "USD", "to": "KRW"},
             timeout=5.0,
             verify=verify_ssl,

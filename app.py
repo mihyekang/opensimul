@@ -34,9 +34,14 @@ async def lifespan(app: FastAPI):
     config = ClientConfig()
     state.usd_to_krw, state.rate_date = fetch_usd_to_krw(verify_ssl=config.verify_ssl)
     state.client = AzureOpenAIClient(config=config, system_prompt="You are a helpful assistant.")
-    state.db_enabled = bool(os.environ.get("POSTGRESQL_CONNECTION_STRING"))
-    if state.db_enabled:
-        db.init_db()
+    state.db_enabled = False
+    if os.environ.get("POSTGRESQL_CONNECTION_STRING"):
+        try:
+            db.init_db()
+            state.db_enabled = True
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning("DB 초기화 실패 — DB 저장 비활성화: %s", e)
     yield
 
 
