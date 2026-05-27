@@ -1,12 +1,15 @@
 """
-Azure OpenAI client wrapper with retry, conversation management, streaming, and token tracking.
+Azure OpenAI client wrapper with retry, conversation management, streaming,
+token tracking, sliding-window history, and persistent memory.
 """
 
+import json
 import logging
 import os
 import time
 import warnings
 from dataclasses import dataclass, field
+from datetime import date
 from typing import Iterator
 
 import httpx
@@ -16,6 +19,9 @@ from openai import AzureOpenAI, APIConnectionError, APIStatusError, RateLimitErr
 load_dotenv()
 
 logger = logging.getLogger(__name__)
+
+# memory.json은 Azure App Service에서 /home이 영구 스토리지
+MEMORY_FILE = os.environ.get("MEMORY_FILE", "memory.json")
 
 
 @dataclass
@@ -28,7 +34,7 @@ class ClientConfig:
     max_retries: int = 3
     retry_delay: float = 1.0
     max_completion_tokens: int = 16384
-    # USD per 1M tokens (gpt-4o-mini defaults)
+    max_history_turns: int = field(default_factory=lambda: int(os.environ.get("MAX_HISTORY_TURNS", "20")))
     input_price_per_m: float = field(default_factory=lambda: float(os.environ.get("PRICE_INPUT_PER_M", "0.15")))
     output_price_per_m: float = field(default_factory=lambda: float(os.environ.get("PRICE_OUTPUT_PER_M", "0.60")))
 
@@ -47,25 +53,75 @@ class TurnUsage:
 
 
 class AzureOpenAIClient:
-    """Production-ready Azure OpenAI client with retry logic, conversation management, and token tracking."""
+    """Azure OpenAI client with sliding-window history, memory injection, and token tracking."""
 
-    def __init__(self, config: ClientConfig | None = None, system_prompt: str = "You are a helpful assistant."):
+    def __init__(self, config: ClientConfig | None = None, base_system_prompt: str = "You are a helpful assistant."):
         self.config = config or ClientConfig()
-        self._conversation: list[dict] = [{"role": "system", "content": system_prompt}]
+        self._base_system_prompt = base_system_prompt
+        self._memory: dict[str, str] = _load_memory()
+        self._conversation: list[dict] = [{"role": "system", "content": self._build_system_prompt()}]
         self._client = self._build_client()
         self._usage_history: list[TurnUsage] = []
+
+    # ── system prompt ──────────────────────────────────────────────────────────
+
+    def _build_system_prompt(self) -> str:
+        parts = [self._base_system_prompt, f"오늘 날짜: {date.today()}"]
+        if self._memory:
+            lines = "\n".join(f"- {k}: {v}" for k, v in self._memory.items())
+            parts.append(f"[사용자 정보]\n{lines}")
+        return "\n\n".join(parts)
+
+    def _refresh_system_prompt(self) -> None:
+        self._conversation[0]["content"] = self._build_system_prompt()
+
+    # ── memory ─────────────────────────────────────────────────────────────────
+
+    def set_memory(self, key: str, value: str) -> None:
+        self._memory[key] = value
+        _save_memory(self._memory)
+        self._refresh_system_prompt()
+
+    def delete_memory(self, key: str) -> bool:
+        existed = key in self._memory
+        self._memory.pop(key, None)
+        _save_memory(self._memory)
+        self._refresh_system_prompt()
+        return existed
+
+    def clear_memory(self) -> None:
+        self._memory.clear()
+        _save_memory(self._memory)
+        self._refresh_system_prompt()
+
+    def get_memory(self) -> dict[str, str]:
+        return dict(self._memory)
+
+    # ── sliding window ─────────────────────────────────────────────────────────
+
+    def _trim_history(self) -> None:
+        """시스템 프롬프트 + 최근 max_history_turns 쌍만 유지."""
+        max_msgs = self.config.max_history_turns * 2 + 1
+        if len(self._conversation) > max_msgs:
+            self._conversation = [self._conversation[0]] + self._conversation[-(max_msgs - 1):]
+
+    @property
+    def current_turns(self) -> int:
+        return (len(self._conversation) - 1) // 2
+
+    # ── http client ────────────────────────────────────────────────────────────
 
     def _build_client(self) -> AzureOpenAI:
         if not self.config.verify_ssl:
             warnings.warn("SSL verification is disabled. Do not use in production.", stacklevel=2)
-
-        http_client = httpx.Client(verify=self.config.verify_ssl)
         return AzureOpenAI(
             azure_endpoint=self.config.endpoint,
             api_key=self.config.api_key,
             api_version=self.config.api_version,
-            http_client=http_client,
+            http_client=httpx.Client(verify=self.config.verify_ssl),
         )
+
+    # ── retry wrappers ─────────────────────────────────────────────────────────
 
     def _call_with_retry(self, messages: list[dict]) -> tuple[str, TurnUsage]:
         last_exc: Exception | None = None
@@ -83,18 +139,17 @@ class AzureOpenAIClient:
                 return response.choices[0].message.content, usage
             except RateLimitError as e:
                 wait = self.config.retry_delay * (2 ** attempt)
-                logger.warning("Rate limited. Retrying in %.1fs (attempt %d/%d).", wait, attempt + 1, self.config.max_retries)
+                logger.warning("Rate limited. Retrying in %.1fs (%d/%d).", wait, attempt + 1, self.config.max_retries)
                 time.sleep(wait)
                 last_exc = e
             except APIConnectionError as e:
                 wait = self.config.retry_delay * (2 ** attempt)
-                logger.warning("Connection error. Retrying in %.1fs (attempt %d/%d).", wait, attempt + 1, self.config.max_retries)
+                logger.warning("Connection error. Retrying in %.1fs (%d/%d).", wait, attempt + 1, self.config.max_retries)
                 time.sleep(wait)
                 last_exc = e
             except APIStatusError as e:
                 logger.error("API error %d: %s", e.status_code, e.message)
                 raise
-
         raise last_exc  # type: ignore[misc]
 
     def _stream_with_retry(self, messages: list[dict]) -> Iterator[str]:
@@ -130,31 +185,31 @@ class AzureOpenAIClient:
             except APIStatusError as e:
                 logger.error("API error %d: %s", e.status_code, e.message)
                 raise
-
         raise last_exc  # type: ignore[misc]
 
+    # ── public chat API ────────────────────────────────────────────────────────
+
     def chat(self, user_message: str) -> tuple[str, TurnUsage]:
-        """Send a message and return (reply, usage). Conversation history is maintained."""
         self._conversation.append({"role": "user", "content": user_message})
         reply, usage = self._call_with_retry(self._conversation)
         self._conversation.append({"role": "assistant", "content": reply})
         self._usage_history.append(usage)
-        logger.debug("Turn complete. Tokens: %d in / %d out", usage.prompt_tokens, usage.completion_tokens)
+        self._trim_history()
         return reply, usage
 
     def stream_chat(self, user_message: str) -> Iterator[str]:
-        """Stream a reply token by token. Usage is recorded after the stream ends."""
         self._conversation.append({"role": "user", "content": user_message})
         collected: list[str] = []
         for token in self._stream_with_retry(self._conversation):
             collected.append(token)
             yield token
         self._conversation.append({"role": "assistant", "content": "".join(collected)})
+        self._trim_history()
 
     def analyze_image(self, image_b64: str, mime_type: str, prompt: str) -> tuple[str, TurnUsage]:
-        """Send an image to the vision model. Not added to conversation history."""
+        """이미지 분석 — 대화 이력에 추가하지 않음."""
         messages = [
-            {"role": "system", "content": "You are a helpful assistant that analyzes images in detail."},
+            {"role": "system", "content": self._build_system_prompt()},
             {
                 "role": "user",
                 "content": [
@@ -165,10 +220,12 @@ class AzureOpenAIClient:
         ]
         return self._call_with_retry(messages)
 
-    def reset(self, system_prompt: str | None = None) -> None:
-        """Clear conversation history, optionally replacing the system prompt."""
-        system = system_prompt or self._conversation[0]["content"]
-        self._conversation = [{"role": "system", "content": system}]
+    def reset(self, base_system_prompt: str | None = None) -> None:
+        if base_system_prompt:
+            self._base_system_prompt = base_system_prompt
+        self._conversation = [{"role": "system", "content": self._build_system_prompt()}]
+
+    # ── stats ──────────────────────────────────────────────────────────────────
 
     @property
     def last_usage(self) -> TurnUsage | None:
@@ -180,11 +237,26 @@ class AzureOpenAIClient:
 
     @property
     def total_cost(self) -> float:
-        return sum(
-            u.cost(self.config.input_price_per_m, self.config.output_price_per_m)
-            for u in self._usage_history
-        )
+        return sum(u.cost(self.config.input_price_per_m, self.config.output_price_per_m) for u in self._usage_history)
 
     @property
     def history(self) -> list[dict]:
         return list(self._conversation)
+
+
+# ── memory persistence ─────────────────────────────────────────────────────────
+
+def _load_memory() -> dict[str, str]:
+    try:
+        with open(MEMORY_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def _save_memory(memory: dict[str, str]) -> None:
+    try:
+        with open(MEMORY_FILE, "w", encoding="utf-8") as f:
+            json.dump(memory, f, ensure_ascii=False, indent=2)
+    except OSError as e:
+        logger.warning("메모리 저장 실패: %s", e)

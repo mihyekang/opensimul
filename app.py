@@ -18,7 +18,6 @@ import db
 from azure_openai_client import AzureOpenAIClient, ClientConfig
 from repl import fetch_usd_to_krw
 
-
 class AppState:
     client: AzureOpenAIClient
     usd_to_krw: float
@@ -59,6 +58,11 @@ class ResetRequest(BaseModel):
     system_prompt: str = "You are a helpful assistant."
 
 
+class MemorySetRequest(BaseModel):
+    key: str
+    value: str
+
+
 # ---------- helpers ----------
 
 def _build_usage(usage, turn_cost_usd: float) -> dict:
@@ -97,7 +101,32 @@ async def info():
         "total_cost_usd": state.client.total_cost,
         "total_cost_krw": state.client.total_cost * state.usd_to_krw,
         "db_enabled": state.db_enabled,
+        "current_turns": state.client.current_turns,
+        "max_history_turns": state.client.config.max_history_turns,
     }
+
+
+@app.get("/memory")
+async def get_memory():
+    return state.client.get_memory()
+
+
+@app.post("/memory")
+async def set_memory(req: MemorySetRequest):
+    state.client.set_memory(req.key, req.value)
+    return {"ok": True, "memory": state.client.get_memory()}
+
+
+@app.delete("/memory/{key}")
+async def delete_memory(key: str):
+    existed = state.client.delete_memory(key)
+    return {"ok": existed, "memory": state.client.get_memory()}
+
+
+@app.delete("/memory")
+async def clear_memory():
+    state.client.clear_memory()
+    return {"ok": True}
 
 
 @app.post("/chat")
