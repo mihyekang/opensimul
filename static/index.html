@@ -709,6 +709,15 @@
   }
 
   loadInfo();
+
+  // ── grocery_saved 자동 요약 ──
+  const _params = new URLSearchParams(window.location.search);
+  if (_params.get("grocery_saved")) {
+    history.replaceState({}, "", "/");
+    setTimeout(() => sendText(
+      "방금 영수증을 저장했어. 이번 구매 내역을 간단히 요약해주고, 다음에 사면 좋을 것들이나 장보기 패턴에 대해 이야기해보자."
+    ), 900);
+  }
 </script>
 </body>
 </html>

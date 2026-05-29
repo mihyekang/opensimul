@@ -594,8 +594,9 @@
         if (data.ok) {
           const badge = document.createElement("div");
           badge.className = "save-badge";
-          badge.textContent = `✅ 저장 완료 (ID: ${data.receipt_id})`;
+          badge.innerHTML = `✅ 저장 완료 — 채팅으로 이동 중…`;
           saveBtn.replaceWith(badge);
+          setTimeout(() => { window.location.href = "/?grocery_saved=1"; }, 1200);
         } else {
           saveBtn.textContent = `저장 실패: ${data.reason || "오류"}`;
           saveBtn.disabled = false;
