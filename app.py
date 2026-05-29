@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 from datetime import date
 
 from fastapi import FastAPI, File, Form, UploadFile, Body
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -134,8 +134,13 @@ async def _save_turn(session_id: str, user_msg: str, assistant_msg: str):
 
 # ---------- routes ----------
 
-@app.get("/", response_class=HTMLResponse)
+@app.get("/")
 async def index():
+    return RedirectResponse(url="/grocery")
+
+
+@app.get("/chat", response_class=HTMLResponse)
+async def chat_page():
     with open("static/index.html", encoding="utf-8") as f:
         return f.read()
 

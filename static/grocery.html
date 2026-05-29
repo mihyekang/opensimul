@@ -533,7 +533,7 @@
 
     // Include ALL results in sessionStorage (already saved + newly saved)
     sessionStorage.setItem("pendingReceipts", JSON.stringify(extractedResults.map(e => e.result)));
-    window.location.href = "/?grocery_saved=1";
+    window.location.href = "/chat?grocery_saved=1";
   });
 
   // ── update bulk save button text ──
