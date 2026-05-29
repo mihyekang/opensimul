@@ -220,6 +220,8 @@
     .items-table td.amount { text-align: right; font-variant-numeric: tabular-nums; }
     .items-table td.qty { text-align: center; color: #888; }
     .items-table tr.unrecognized td { color: #bbb; }
+    .items-table tr.discount td { color: #dc2626; }
+    .items-table tr.discount td.amount { font-weight: 600; }
 
     .total-row {
       display: flex;
@@ -445,7 +447,9 @@
 
   function fmt(n) {
     if (n == null) return "—";
-    return Number(n).toLocaleString("ko-KR") + "원";
+    const abs = Math.abs(Number(n));
+    const str = abs.toLocaleString("ko-KR") + "원";
+    return n < 0 ? "−" + str : str;
   }
 
   function buildResultSection(filename, { result, issues }) {
@@ -505,24 +509,31 @@
     tbody.removeAttribute("id");
     (result.items || []).forEach(item => {
       const tr = document.createElement("tr");
-      const hasAmount = item.amount != null;
-      if (!hasAmount) tr.className = "unrecognized";
+      const isDiscount = item.amount != null && item.amount < 0;
+      const isUnrecognized = item.amount == null;
+      if (isDiscount) tr.className = "discount";
+      else if (isUnrecognized) tr.className = "unrecognized";
       tr.innerHTML = `
-        <td>${escHtml(item.raw_name || "—")}</td>
-        <td class="qty">${item.qty ?? 1}</td>
+        <td>${isDiscount ? "↳ " : ""}${escHtml(item.raw_name || "—")}</td>
+        <td class="qty">${isDiscount ? "" : (item.qty ?? 1)}</td>
         <td class="amount">${fmt(item.amount)}</td>
       `;
       tbody.appendChild(tr);
     });
 
     // fill total (only recognized items)
-    const recognized = (result.items || []).filter(i => i.amount != null);
-    const recognizedSum = recognized.reduce((s, i) => s + (i.amount || 0), 0);
+    const allItems = result.items || [];
+    const recognized = allItems.filter(i => i.amount != null);
+    const recognizedSum = recognized.reduce((s, i) => s + i.amount, 0);
+    const hasUnrecognized = recognized.length < allItems.length;
+    const hasDiscount = recognized.some(i => i.amount < 0);
     const totalEl = card.querySelector("#total-placeholder");
     totalEl.removeAttribute("id");
-    const allRecognized = recognized.length === (result.items || []).length;
+    let subNote = "";
+    if (hasUnrecognized) subNote = "(인식된 항목만)";
+    else if (hasDiscount) subNote = "(할인 포함)";
     totalEl.innerHTML = fmt(recognizedSum) +
-      (!allRecognized ? `<span class="total-sub">(인식된 항목만)</span>` : "");
+      (subNote ? `<span class="total-sub">${subNote}</span>` : "");
 
     // raw JSON toggle
     const toggle = document.createElement("button");
