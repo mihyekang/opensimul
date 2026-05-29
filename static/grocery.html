@@ -273,34 +273,32 @@
       font-weight: 600;
     }
 
-    /* save button */
-    .save-btn {
+    /* bulk save bar */
+    #bulk-save-bar {
+      display: none;
+      position: sticky;
+      bottom: 16px;
+      width: 100%;
+      max-width: 480px;
+      margin-top: 16px;
+      z-index: 10;
+    }
+    #bulk-save-btn {
       display: block;
       width: 100%;
-      padding: 10px;
-      margin-top: 10px;
+      padding: 14px;
       background: #16a34a;
       color: #fff;
       border: none;
-      border-radius: 8px;
-      font-size: 0.85rem;
-      font-weight: 600;
+      border-radius: 12px;
+      font-size: 0.95rem;
+      font-weight: 700;
       cursor: pointer;
+      box-shadow: 0 4px 16px rgba(22,163,74,.35);
       transition: background 0.15s;
     }
-    .save-btn:hover:not(:disabled) { background: #15803d; }
-    .save-btn:disabled { background: #86efac; cursor: not-allowed; }
-    .save-badge {
-      display: block;
-      text-align: center;
-      padding: 8px;
-      margin-top: 10px;
-      background: #f0fdf4;
-      border: 1px solid #86efac;
-      border-radius: 8px;
-      font-size: 0.8rem;
-      color: #166534;
-    }
+    #bulk-save-btn:hover:not(:disabled) { background: #15803d; }
+    #bulk-save-btn:disabled { background: #86efac; cursor: not-allowed; }
 
     /* raw JSON toggle */
     .raw-toggle {
@@ -350,18 +348,24 @@
 </div>
 
 <div id="result-wrap"></div>
+<div id="bulk-save-bar">
+  <button id="bulk-save-btn">💾 저장하고 채팅에서 분석하기</button>
+</div>
 
 <script>
-  const dropZone    = document.getElementById("drop-zone");
-  const fileInput   = document.getElementById("file-input");
-  const thumbStrip  = document.getElementById("thumb-strip");
-  const extractBtn  = document.getElementById("extract-btn");
-  const progressWrap= document.getElementById("progress-wrap");
-  const progressBar = document.getElementById("progress-bar");
+  const dropZone      = document.getElementById("drop-zone");
+  const fileInput     = document.getElementById("file-input");
+  const thumbStrip    = document.getElementById("thumb-strip");
+  const extractBtn    = document.getElementById("extract-btn");
+  const progressWrap  = document.getElementById("progress-wrap");
+  const progressBar   = document.getElementById("progress-bar");
   const progressLabel = document.getElementById("progress-label");
-  const resultWrap  = document.getElementById("result-wrap");
+  const resultWrap    = document.getElementById("result-wrap");
+  const bulkSaveBar   = document.getElementById("bulk-save-bar");
+  const bulkSaveBtn   = document.getElementById("bulk-save-btn");
 
-  let selectedFiles = []; // File objects
+  let selectedFiles = [];
+  let extractedResults = []; // { result, filename } for bulk save
 
   // ── file selection ──
   dropZone.addEventListener("click", () => fileInput.click());
@@ -435,19 +439,19 @@
     if (!selectedFiles.length) return;
 
     extractBtn.disabled = true;
+    bulkSaveBar.style.display = "none";
     progressWrap.style.display = "block";
     resultWrap.style.display = "none";
     resultWrap.innerHTML = "";
+    extractedResults = [];
 
     const total = selectedFiles.length;
     const thumbItems = thumbStrip.querySelectorAll(".thumb-item");
 
     for (let i = 0; i < total; i++) {
       const file = selectedFiles[i];
-      const pct = Math.round((i / total) * 100);
-      progressBar.style.width = pct + "%";
+      progressBar.style.width = Math.round((i / total) * 100) + "%";
       progressLabel.textContent = `${i + 1} / ${total} 처리 중… (${file.name})`;
-
       if (thumbItems[i]) thumbItems[i].classList.add("processing");
 
       try {
@@ -457,6 +461,7 @@
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
 
+        extractedResults.push({ result: data.result, filename: file.name });
         const section = buildResultSection(file.name, data);
         resultWrap.appendChild(section);
         if (thumbItems[i]) { thumbItems[i].classList.remove("processing"); thumbItems[i].classList.add("done"); }
@@ -471,10 +476,41 @@
 
     progressBar.style.width = "100%";
     progressLabel.textContent = `완료 (${total}장)`;
-
     resultWrap.style.display = "block";
+
+    if (extractedResults.length > 0) {
+      bulkSaveBtn.textContent = extractedResults.length > 1
+        ? `💾 ${extractedResults.length}장 저장하고 채팅에서 분석하기`
+        : "💾 저장하고 채팅에서 분석하기";
+      bulkSaveBar.style.display = "block";
+    }
+
     resultWrap.scrollIntoView({ behavior: "smooth" });
     extractBtn.disabled = false;
+  });
+
+  // ── bulk save ──
+  bulkSaveBtn.addEventListener("click", async () => {
+    bulkSaveBtn.disabled = true;
+    bulkSaveBtn.textContent = "저장 중…";
+
+    const saved = [];
+    for (const { result } of extractedResults) {
+      try {
+        const resp = await fetch("/grocery/save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ result }),
+        });
+        const data = await resp.json();
+        if (data.ok || data.reason === "db_not_enabled") saved.push(result);
+      } catch (e) {
+        saved.push(result); // DB 오류여도 채팅 이동은 계속
+      }
+    }
+
+    sessionStorage.setItem("pendingReceipts", JSON.stringify(saved));
+    window.location.href = "/?grocery_saved=1";
   });
 
   // ── helpers ──
@@ -576,39 +612,6 @@
     else if (hasDiscount) subNote = "(할인 포함)";
     totalEl.innerHTML = fmt(activeSum) +
       (subNote ? `<span class="total-sub">${subNote}</span>` : "");
-
-    // save button
-    const saveBtn = document.createElement("button");
-    saveBtn.className = "save-btn";
-    saveBtn.textContent = "💾 장보기 기록에 저장";
-    saveBtn.addEventListener("click", async () => {
-      saveBtn.disabled = true;
-      saveBtn.textContent = "저장 중…";
-      try {
-        const resp = await fetch("/grocery/save", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ result }),
-        });
-        const data = await resp.json();
-        if (data.ok) {
-          const badge = document.createElement("div");
-          badge.className = "save-badge";
-          badge.innerHTML = `✅ 저장 완료 — 채팅으로 이동 중…`;
-          saveBtn.replaceWith(badge);
-          // 채팅 페이지에서 바로 요약할 수 있도록 영수증 데이터 전달
-          sessionStorage.setItem("pendingReceipt", JSON.stringify(result));
-          setTimeout(() => { window.location.href = "/?grocery_saved=1"; }, 1200);
-        } else {
-          saveBtn.textContent = `저장 실패: ${data.reason || "오류"}`;
-          saveBtn.disabled = false;
-        }
-      } catch (e) {
-        saveBtn.textContent = `저장 오류: ${e.message}`;
-        saveBtn.disabled = false;
-      }
-    });
-    section.appendChild(saveBtn);
 
     // raw JSON toggle
     const toggle = document.createElement("button");

@@ -88,6 +88,59 @@
     .mem-add-btn:hover { background: #106ebe; }
     #mem-empty { font-size: 0.75rem; color: #aaa; text-align: center; padding: 6px 0; }
 
+    /* ── receipt report card ── */
+    .receipt-report-block {
+      align-self: stretch;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 0 2px;
+    }
+    .receipt-report-label {
+      font-size: 0.72rem;
+      color: #aaa;
+      text-align: center;
+      letter-spacing: 0.04em;
+    }
+    .receipt-report-card {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 1px 4px rgba(0,0,0,.07);
+    }
+    .rrc-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 14px 10px;
+      background: #f8fafc;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    .rrc-merchant { font-size: 0.95rem; font-weight: 700; color: #111; }
+    .rrc-date { font-size: 0.75rem; color: #888; }
+    .rrc-items { padding: 8px 14px; }
+    .rrc-item {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.82rem;
+      padding: 4px 0;
+      color: #444;
+      border-bottom: 1px solid #f8f8f8;
+    }
+    .rrc-item:last-child { border-bottom: none; }
+    .rrc-item.discount { color: #dc2626; }
+    .rrc-item.more { color: #aaa; font-size: 0.78rem; }
+    .rrc-total {
+      display: flex;
+      justify-content: space-between;
+      padding: 10px 14px;
+      background: #f8fafc;
+      border-top: 1px solid #f0f0f0;
+      font-weight: 700;
+      font-size: 0.88rem;
+    }
+
     /* ── chat area ── */
     #chat-wrap {
       width: 100%;
@@ -714,29 +767,99 @@
   const _params = new URLSearchParams(window.location.search);
   if (_params.get("grocery_saved")) {
     history.replaceState({}, "", "/");
-    const _pending = sessionStorage.getItem("pendingReceipt");
+
+    // 구/신 포맷 모두 지원
+    let _receipts = [];
+    try {
+      const _raw = sessionStorage.getItem("pendingReceipts") || sessionStorage.getItem("pendingReceipt");
+      if (_raw) {
+        const _parsed = JSON.parse(_raw);
+        _receipts = Array.isArray(_parsed) ? _parsed : [_parsed];
+      }
+    } catch(e) {}
+    sessionStorage.removeItem("pendingReceipts");
     sessionStorage.removeItem("pendingReceipt");
 
-    let _autoMsg = "방금 영수증을 저장했어. 이번 구매 내역을 간단히 요약해주고, 다음에 사면 좋을 것들이나 장보기 패턴에 대해 이야기해보자.";
-    if (_pending) {
-      try {
-        const r = JSON.parse(_pending);
-        const activeItems = (r.items || []).filter(i => !i.is_cancelled && i.amount != null);
-        const purchaseItems = activeItems.filter(i => i.amount > 0);
-        const discountItems = activeItems.filter(i => i.amount < 0);
-        const discountTotal = discountItems.reduce((s, i) => s + i.amount, 0);
-
-        const itemLines = purchaseItems
-          .map(i => `- ${i.raw_name}${i.qty > 1 ? ` x${i.qty}` : ""}: ${i.amount.toLocaleString("ko-KR")}원`)
-          .join("\n");
-        const discountLine = discountTotal < 0
-          ? `\n할인 합계: ${discountTotal.toLocaleString("ko-KR")}원` : "";
-        const totalLine = r.total ? `\n결제 합계: ${r.total.toLocaleString("ko-KR")}원` : "";
-
-        _autoMsg = `[방금 저장한 영수증]\n상점: ${r.merchant || "알 수 없음"}\n날짜: ${r.purchase_date || "날짜 미상"}\n\n${itemLines}${discountLine}${totalLine}\n\n이 구매 내역을 간단히 요약해주고, 앞으로의 장보기 패턴이나 다음에 사면 좋을 것들에 대해 이야기해보자.`;
-      } catch(e) {}
+    function _fmtAmt(n) {
+      if (n == null) return "—";
+      const s = Math.abs(n).toLocaleString("ko-KR") + "원";
+      return n < 0 ? "−" + s : s;
     }
-    setTimeout(() => sendText(_autoMsg), 900);
+    function _esc(s) {
+      return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    }
+
+    function _buildReceiptCard(r) {
+      const activeItems = (r.items||[]).filter(i => !i.is_cancelled && i.amount != null);
+      const purchaseItems = activeItems.filter(i => i.amount > 0);
+      const discountItems = activeItems.filter(i => i.amount < 0);
+      const discountTotal = discountItems.reduce((s,i) => s+i.amount, 0);
+      const activeSum = activeItems.reduce((s,i) => s+i.amount, 0);
+      const MAX = 5;
+
+      const card = document.createElement("div");
+      card.className = "receipt-report-card";
+      card.innerHTML = `
+        <div class="rrc-header">
+          <span class="rrc-merchant">🏪 ${_esc(r.merchant||"알 수 없음")}</span>
+          <span class="rrc-date">${_esc(r.purchase_date||"날짜 미상")}${r._date_inferred?" *":""}</span>
+        </div>
+        <div class="rrc-items" id="rrc-items-tmp"></div>
+        <div class="rrc-total"><span>합계</span><span>${_fmtAmt(activeSum)}</span></div>
+      `;
+      const itemsDiv = card.querySelector("#rrc-items-tmp");
+      itemsDiv.removeAttribute("id");
+      purchaseItems.slice(0, MAX).forEach(i => {
+        const row = document.createElement("div");
+        row.className = "rrc-item";
+        row.innerHTML = `<span>${_esc(i.raw_name)}</span><span>${_fmtAmt(i.amount)}</span>`;
+        itemsDiv.appendChild(row);
+      });
+      if (purchaseItems.length > MAX) {
+        const more = document.createElement("div");
+        more.className = "rrc-item more";
+        more.innerHTML = `<span>외 ${purchaseItems.length - MAX}개 품목</span><span></span>`;
+        itemsDiv.appendChild(more);
+      }
+      if (discountTotal < 0) {
+        const disc = document.createElement("div");
+        disc.className = "rrc-item discount";
+        disc.innerHTML = `<span>↳ 할인</span><span>${_fmtAmt(discountTotal)}</span>`;
+        itemsDiv.appendChild(disc);
+      }
+      return card;
+    }
+
+    setTimeout(() => {
+      const chatWrap = document.getElementById("chat-wrap");
+
+      // 영수증 카드 블록 삽입
+      if (_receipts.length > 0) {
+        const block = document.createElement("div");
+        block.className = "receipt-report-block";
+        const lbl = document.createElement("p");
+        lbl.className = "receipt-report-label";
+        lbl.textContent = `🧾 저장된 영수증 ${_receipts.length}장`;
+        block.appendChild(lbl);
+        _receipts.forEach(r => block.appendChild(_buildReceiptCard(r)));
+        chatWrap.appendChild(block);
+        chatWrap.scrollTop = chatWrap.scrollHeight;
+      }
+
+      // LLM에 보낼 메시지 (인라인 데이터 포함)
+      const _summary = _receipts.map(r => {
+        const items = (r.items||[]).filter(i=>!i.is_cancelled && i.amount != null && i.amount > 0);
+        const discounts = (r.items||[]).filter(i=>!i.is_cancelled && i.amount != null && i.amount < 0);
+        const discTotal = discounts.reduce((s,i)=>s+i.amount,0);
+        const lines = items.map(i=>`  - ${i.raw_name}: ${(i.amount||0).toLocaleString("ko-KR")}원`).join("\n");
+        const discLine = discTotal<0 ? `\n  할인: ${discTotal.toLocaleString("ko-KR")}원` : "";
+        const totalLine = r.total ? `\n  합계: ${r.total.toLocaleString("ko-KR")}원` : "";
+        return `[${r.merchant||"알 수 없음"} · ${r.purchase_date||"날짜 미상"}]\n${lines}${discLine}${totalLine}`;
+      }).join("\n\n");
+
+      const msg = `[방금 저장한 영수증]\n${_summary}\n\n이 구매 내역을 보기 좋게 요약하고, 장보기 패턴과 다음에 사면 좋을 것들을 추천해줘.`;
+      sendText(msg);
+    }, 400);
   }
 </script>
 </body>
