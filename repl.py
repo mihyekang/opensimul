@@ -72,7 +72,7 @@ def run() -> None:
     config = ClientConfig()
     usd_to_krw, rate_date = fetch_usd_to_krw(verify_ssl=config.verify_ssl)
 
-    client = AzureOpenAIClient(config=config, system_prompt="You are a helpful assistant.")
+    client = AzureOpenAIClient(config=config, base_system_prompt="You are a helpful assistant.")
 
     print(f"Azure OpenAI REPL  |  deployment: {config.deployment}")
     print(f"환율: 1 USD = ₩{usd_to_krw:,.1f}  ({rate_date} 기준, frankfurter.app)")
