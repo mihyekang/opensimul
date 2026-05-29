@@ -131,6 +131,23 @@
     .rrc-item:last-child { border-bottom: none; }
     .rrc-item.discount { color: #dc2626; }
     .rrc-item.more { color: #aaa; font-size: 0.78rem; }
+    .rrc-sub-header {
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: #888;
+      padding: 8px 14px 2px;
+      letter-spacing: 0.02em;
+      border-top: 1px solid #f0f0f0;
+    }
+    .rrc-sub-header:first-of-type { border-top: none; }
+    .rrc-subtotal {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 14px 8px;
+      font-size: 0.8rem;
+      color: #555;
+      background: #fafafa;
+    }
     .rrc-total {
       display: flex;
       justify-content: space-between;
@@ -789,59 +806,109 @@
       return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
     }
 
-    function _buildReceiptCard(r) {
-      const activeItems = (r.items||[]).filter(i => !i.is_cancelled && i.amount != null);
-      const purchaseItems = activeItems.filter(i => i.amount > 0);
-      const discountItems = activeItems.filter(i => i.amount < 0);
-      const discountTotal = discountItems.reduce((s,i) => s+i.amount, 0);
-      const activeSum = activeItems.reduce((s,i) => s+i.amount, 0);
+    // 업체별 그루핑: 입력 순서 유지
+    function _groupByMerchant(receipts) {
+      const map = {};
+      const order = [];
+      receipts.forEach(r => {
+        const key = r.merchant || "알 수 없음";
+        if (!map[key]) { map[key] = []; order.push(key); }
+        map[key].push(r);
+      });
+      return order.map(k => ({ merchant: k, receipts: map[k] }));
+    }
+
+    function _buildMerchantCard(merchant, receipts) {
       const MAX = 5;
+      const grandTotal = receipts.reduce((sum, r) => {
+        return sum + (r.items||[]).filter(i => !i.is_cancelled && i.amount != null)
+                                  .reduce((s,i) => s+i.amount, 0);
+      }, 0);
+      const multiVisit = receipts.length > 1;
 
       const card = document.createElement("div");
       card.className = "receipt-report-card";
+
+      // 카드 헤더
+      const headerDateText = multiVisit
+        ? `${receipts.length}회 방문`
+        : (receipts[0].purchase_date || "날짜 미상") + (receipts[0]._date_inferred ? " *" : "");
       card.innerHTML = `
         <div class="rrc-header">
-          <span class="rrc-merchant">🏪 ${_esc(r.merchant||"알 수 없음")}</span>
-          <span class="rrc-date">${_esc(r.purchase_date||"날짜 미상")}${r._date_inferred?" *":""}</span>
+          <span class="rrc-merchant">🏪 ${_esc(merchant)}</span>
+          <span class="rrc-date">${_esc(headerDateText)}</span>
         </div>
-        <div class="rrc-items" id="rrc-items-tmp"></div>
-        <div class="rrc-total"><span>합계</span><span>${_fmtAmt(activeSum)}</span></div>
       `;
-      const itemsDiv = card.querySelector("#rrc-items-tmp");
-      itemsDiv.removeAttribute("id");
-      purchaseItems.slice(0, MAX).forEach(i => {
-        const row = document.createElement("div");
-        row.className = "rrc-item";
-        row.innerHTML = `<span>${_esc(i.raw_name)}</span><span>${_fmtAmt(i.amount)}</span>`;
-        itemsDiv.appendChild(row);
+
+      // 방문별 섹션
+      receipts.forEach((r, idx) => {
+        const activeItems = (r.items||[]).filter(i => !i.is_cancelled && i.amount != null);
+        const purchaseItems = activeItems.filter(i => i.amount > 0);
+        const discountItems = activeItems.filter(i => i.amount < 0);
+        const discountTotal = discountItems.reduce((s,i) => s+i.amount, 0);
+        const activeSum = activeItems.reduce((s,i) => s+i.amount, 0);
+
+        if (multiVisit) {
+          const sub = document.createElement("div");
+          sub.className = "rrc-sub-header";
+          sub.textContent = (r.purchase_date || `방문 ${idx+1}`) + (r._date_inferred ? " *" : "");
+          card.appendChild(sub);
+        }
+
+        const itemsDiv = document.createElement("div");
+        itemsDiv.className = "rrc-items";
+        purchaseItems.slice(0, MAX).forEach(i => {
+          const row = document.createElement("div");
+          row.className = "rrc-item";
+          row.innerHTML = `<span>${_esc(i.raw_name)}</span><span>${_fmtAmt(i.amount)}</span>`;
+          itemsDiv.appendChild(row);
+        });
+        if (purchaseItems.length > MAX) {
+          const more = document.createElement("div");
+          more.className = "rrc-item more";
+          more.innerHTML = `<span>외 ${purchaseItems.length - MAX}개 품목</span><span></span>`;
+          itemsDiv.appendChild(more);
+        }
+        if (discountTotal < 0) {
+          const disc = document.createElement("div");
+          disc.className = "rrc-item discount";
+          disc.innerHTML = `<span>↳ 할인</span><span>${_fmtAmt(discountTotal)}</span>`;
+          itemsDiv.appendChild(disc);
+        }
+        card.appendChild(itemsDiv);
+
+        if (multiVisit) {
+          const sub = document.createElement("div");
+          sub.className = "rrc-subtotal";
+          sub.innerHTML = `<span>소계</span><span>${_fmtAmt(activeSum)}</span>`;
+          card.appendChild(sub);
+        }
       });
-      if (purchaseItems.length > MAX) {
-        const more = document.createElement("div");
-        more.className = "rrc-item more";
-        more.innerHTML = `<span>외 ${purchaseItems.length - MAX}개 품목</span><span></span>`;
-        itemsDiv.appendChild(more);
-      }
-      if (discountTotal < 0) {
-        const disc = document.createElement("div");
-        disc.className = "rrc-item discount";
-        disc.innerHTML = `<span>↳ 할인</span><span>${_fmtAmt(discountTotal)}</span>`;
-        itemsDiv.appendChild(disc);
-      }
+
+      // 합계
+      const totalDiv = document.createElement("div");
+      totalDiv.className = "rrc-total";
+      totalDiv.innerHTML = `<span>${multiVisit ? "총합계" : "합계"}</span><span>${_fmtAmt(grandTotal)}</span>`;
+      card.appendChild(totalDiv);
+
       return card;
     }
 
     setTimeout(() => {
       const chatWrap = document.getElementById("chat-wrap");
 
-      // 영수증 카드 블록 삽입
+      // 업체별 그루핑 후 카드 블록 삽입
       if (_receipts.length > 0) {
+        const groups = _groupByMerchant(_receipts);
         const block = document.createElement("div");
         block.className = "receipt-report-block";
         const lbl = document.createElement("p");
         lbl.className = "receipt-report-label";
-        lbl.textContent = `🧾 저장된 영수증 ${_receipts.length}장`;
+        lbl.textContent = groups.length < _receipts.length
+          ? `🧾 저장된 영수증 ${_receipts.length}장 · ${groups.length}개 업체`
+          : `🧾 저장된 영수증 ${_receipts.length}장`;
         block.appendChild(lbl);
-        _receipts.forEach(r => block.appendChild(_buildReceiptCard(r)));
+        groups.forEach(g => block.appendChild(_buildMerchantCard(g.merchant, g.receipts)));
         chatWrap.appendChild(block);
         chatWrap.scrollTop = chatWrap.scrollHeight;
       }
