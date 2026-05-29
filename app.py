@@ -349,6 +349,16 @@ async def grocery_history(days: int = 30):
     return rows
 
 
+@app.get("/grocery/recent")
+async def grocery_recent(days: int = 90):
+    """카드 렌더링용: 최근 N일 구매 이력 (품목 포함)."""
+    if not state.db_enabled:
+        return []
+    loop = asyncio.get_event_loop()
+    rows = await loop.run_in_executor(None, lambda: db.get_recent_groceries(days))
+    return rows
+
+
 @app.get("/grocery/debug")
 async def grocery_debug():
     """DB 연결 상태 및 최근 영수증 확인용 엔드포인트."""
