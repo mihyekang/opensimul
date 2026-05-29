@@ -300,6 +300,29 @@
     #bulk-save-btn:hover:not(:disabled) { background: #15803d; }
     #bulk-save-btn:disabled { background: #86efac; cursor: not-allowed; }
 
+    /* individual save button */
+    .save-btn {
+      display: block;
+      width: 100%;
+      padding: 10px;
+      background: #f0fdf4;
+      color: #16a34a;
+      border: 1.5px solid #86efac;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      margin-bottom: 8px;
+      transition: background 0.15s, color 0.15s;
+    }
+    .save-btn:hover:not(:disabled) { background: #dcfce7; }
+    .save-btn:disabled { cursor: not-allowed; }
+    .save-btn.saved {
+      background: #f0fdf4;
+      color: #15803d;
+      border-color: #4ade80;
+    }
+
     /* raw JSON toggle */
     .raw-toggle {
       font-size: 0.75rem;
@@ -365,7 +388,7 @@
   const bulkSaveBtn   = document.getElementById("bulk-save-btn");
 
   let selectedFiles = [];
-  let extractedResults = []; // { result, filename } for bulk save
+  let extractedResults = []; // { result, filename, saved } for save tracking
 
   // ── file selection ──
   dropZone.addEventListener("click", () => fileInput.click());
@@ -461,8 +484,9 @@
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
 
-        extractedResults.push({ result: data.result, filename: file.name });
-        const section = buildResultSection(file.name, data);
+        const entry = { result: data.result, filename: file.name, saved: false };
+        extractedResults.push(entry);
+        const section = buildResultSection(file.name, data, entry);
         resultWrap.appendChild(section);
         if (thumbItems[i]) { thumbItems[i].classList.remove("processing"); thumbItems[i].classList.add("done"); }
       } catch (err) {
@@ -479,9 +503,7 @@
     resultWrap.style.display = "block";
 
     if (extractedResults.length > 0) {
-      bulkSaveBtn.textContent = extractedResults.length > 1
-        ? `💾 ${extractedResults.length}장 저장하고 채팅에서 분석하기`
-        : "💾 저장하고 채팅에서 분석하기";
+      updateBulkSaveBtn();
       bulkSaveBar.style.display = "block";
     }
 
@@ -494,24 +516,37 @@
     bulkSaveBtn.disabled = true;
     bulkSaveBtn.textContent = "저장 중…";
 
-    const saved = [];
-    for (const { result } of extractedResults) {
+    for (const entry of extractedResults) {
+      if (entry.saved) continue; // skip already individually saved
       try {
         const resp = await fetch("/grocery/save", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ result }),
+          body: JSON.stringify({ result: entry.result }),
         });
         const data = await resp.json();
-        if (data.ok || data.reason === "db_not_enabled") saved.push(result);
+        if (data.ok || data.reason === "db_not_enabled") entry.saved = true;
       } catch (e) {
-        saved.push(result); // DB 오류여도 채팅 이동은 계속
+        entry.saved = true; // DB 오류여도 채팅 이동은 계속
       }
     }
 
-    sessionStorage.setItem("pendingReceipts", JSON.stringify(saved));
+    // Include ALL results in sessionStorage (already saved + newly saved)
+    sessionStorage.setItem("pendingReceipts", JSON.stringify(extractedResults.map(e => e.result)));
     window.location.href = "/?grocery_saved=1";
   });
+
+  // ── update bulk save button text ──
+  function updateBulkSaveBtn() {
+    const unsaved = extractedResults.filter(e => !e.saved).length;
+    if (unsaved === 0) {
+      bulkSaveBtn.textContent = "💬 채팅에서 분석하기";
+    } else if (extractedResults.length > 1) {
+      bulkSaveBtn.textContent = `💾 ${unsaved}장 저장하고 채팅에서 분석하기`;
+    } else {
+      bulkSaveBtn.textContent = "💾 저장하고 채팅에서 분석하기";
+    }
+  }
 
   // ── helpers ──
   function escHtml(s) {
@@ -525,7 +560,7 @@
     return n < 0 ? "−" + str : str;
   }
 
-  function buildResultSection(filename, { result, issues }) {
+  function buildResultSection(filename, { result, issues }, entry) {
     const section = document.createElement("div");
     section.className = "result-section";
 
@@ -612,6 +647,40 @@
     else if (hasDiscount) subNote = "(할인 포함)";
     totalEl.innerHTML = fmt(activeSum) +
       (subNote ? `<span class="total-sub">${subNote}</span>` : "");
+
+    // individual save button
+    if (entry) {
+      const saveBtn = document.createElement("button");
+      saveBtn.className = "save-btn";
+      saveBtn.textContent = "💾 이 영수증 저장";
+      saveBtn.addEventListener("click", async () => {
+        if (entry.saved) return;
+        saveBtn.disabled = true;
+        saveBtn.textContent = "저장 중…";
+        try {
+          const resp = await fetch("/grocery/save", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ result: entry.result }),
+          });
+          const data = await resp.json();
+          if (data.ok || data.reason === "db_not_enabled") {
+            entry.saved = true;
+            saveBtn.textContent = "✅ 저장됨";
+            saveBtn.classList.add("saved");
+          } else {
+            saveBtn.disabled = false;
+            saveBtn.textContent = "💾 이 영수증 저장";
+          }
+        } catch (e) {
+          entry.saved = true;
+          saveBtn.textContent = "✅ 저장됨";
+          saveBtn.classList.add("saved");
+        }
+        updateBulkSaveBtn();
+      });
+      section.appendChild(saveBtn);
+    }
 
     // raw JSON toggle
     const toggle = document.createElement("button");
