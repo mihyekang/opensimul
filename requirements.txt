@@ -6,3 +6,4 @@ uvicorn[standard]>=0.30.0
 psycopg2-binary>=2.9.0
 python-multipart>=0.0.9
 pymupdf>=1.24.0
+Pillow>=10.0.0

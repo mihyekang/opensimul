@@ -5,6 +5,7 @@ Run: uvicorn app:app --reload
 
 import asyncio
 import base64
+import io
 import json
 import logging
 import os
@@ -12,6 +13,7 @@ from contextlib import asynccontextmanager
 from datetime import date
 
 import fitz  # PyMuPDF
+from PIL import Image, ImageOps
 
 from fastapi import FastAPI, File, Form, UploadFile, Body, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse, RedirectResponse
@@ -26,6 +28,26 @@ from session_manager import SessionManager
 
 logger = logging.getLogger(__name__)
 SESSION_RETENTION_DAYS = 7
+MAX_IMAGE_PX = 1568  # Azure OpenAI vision 권장 최대 해상도
+
+
+def _resize_image(content: bytes, mime_type: str) -> tuple[bytes, str]:
+    """최장 변이 MAX_IMAGE_PX를 초과하는 이미지를 리사이즈. EXIF 회전도 보정."""
+    try:
+        img = Image.open(io.BytesIO(content))
+        img = ImageOps.exif_transpose(img)
+        w, h = img.size
+        if max(w, h) > MAX_IMAGE_PX:
+            scale = MAX_IMAGE_PX / max(w, h)
+            img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
+        if img.mode not in ("RGB", "L"):
+            img = img.convert("RGB")
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=85)
+        return buf.getvalue(), "image/jpeg"
+    except Exception:
+        logger.warning("이미지 리사이즈 실패 — 원본 사용", exc_info=True)
+        return content, mime_type
 
 
 class AppState:
@@ -324,12 +346,15 @@ async def grocery_extract(image: UploadFile = File(...)):
     content = await image.read()
     mime_type = image.content_type or "image/jpeg"
 
-    # PDF → PNG 변환 (첫 페이지)
+    # PDF → JPEG 변환 (첫 페이지, 150 DPI)
     if mime_type == "application/pdf" or (image.filename or "").lower().endswith(".pdf"):
         doc = fitz.open(stream=content, filetype="pdf")
-        pix = doc[0].get_pixmap(dpi=200)
-        content = pix.tobytes("png")
-        mime_type = "image/png"
+        pix = doc[0].get_pixmap(dpi=150)
+        content = pix.tobytes("jpeg")
+        mime_type = "image/jpeg"
+
+    # 이미지 리사이즈 (최장 변 1568px 이하로, EXIF 회전 보정)
+    content, mime_type = _resize_image(content, mime_type)
 
     config = ClientConfig()
     loop = asyncio.get_event_loop()
