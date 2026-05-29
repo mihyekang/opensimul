@@ -356,9 +356,9 @@
 
 <div id="drop-zone">
   <div class="icon">🧾</div>
-  <p><strong>클릭</strong>하거나 이미지를 여기로 드래그하세요<br>
-  여러 장 동시 선택 가능 · 이마트 · 쿠팡 · 네이버 영수증</p>
-  <input type="file" id="file-input" accept="image/*" multiple />
+  <p><strong>클릭</strong>하거나 이미지/PDF를 여기로 드래그하세요<br>
+  여러 장 동시 선택 가능 · JPG · PNG · PDF 지원</p>
+  <input type="file" id="file-input" accept="image/*,application/pdf" multiple />
 </div>
 
 <div id="thumb-strip"></div>
@@ -387,6 +387,14 @@
   const bulkSaveBar   = document.getElementById("bulk-save-bar");
   const bulkSaveBtn   = document.getElementById("bulk-save-btn");
 
+  // 사용자 식별 — chat_session_id 공유
+  function getUserId() {
+    let uid = localStorage.getItem("chat_session_id");
+    if (!uid) { uid = crypto.randomUUID(); localStorage.setItem("chat_session_id", uid); }
+    return uid;
+  }
+  const USER_ID = getUserId();
+
   let selectedFiles = [];
   let extractedResults = []; // { result, filename, saved } for save tracking
 
@@ -402,7 +410,7 @@
   dropZone.addEventListener("drop", e => {
     e.preventDefault();
     dropZone.classList.remove("drag-over");
-    addFiles(Array.from(e.dataTransfer.files).filter(f => f.type.startsWith("image/")));
+    addFiles(Array.from(e.dataTransfer.files).filter(f => f.type.startsWith("image/") || f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf")));
   });
 
   function addFiles(files) {
@@ -522,7 +530,7 @@
         const resp = await fetch("/grocery/save", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ result: entry.result }),
+          body: JSON.stringify({ result: entry.result, user_id: USER_ID }),
         });
         const data = await resp.json();
         if (data.ok || data.reason === "db_not_enabled") entry.saved = true;

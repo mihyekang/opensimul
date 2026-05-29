@@ -991,7 +991,7 @@
     inputEl.style.height = "auto";
     addBubble("user", msg);
     try {
-      const rows = await fetch("/grocery/recent?days=90").then(r => r.json());
+      const rows = await fetch(`/grocery/recent?days=90&user_id=${SESSION_ID}`).then(r => r.json());
       if (!rows || rows.length === 0) {
         const { bubble } = addBubble("assistant");
         bubble.textContent = "저장된 영수증이 없어요. 영수증 분석기에서 먼저 영수증을 저장해보세요 🧾";

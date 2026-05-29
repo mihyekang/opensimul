@@ -63,6 +63,11 @@ def init_db() -> None:
             """)
             cur.execute("CREATE INDEX IF NOT EXISTS idx_grocery_receipts_date ON grocery_receipts(purchase_date DESC)")
             cur.execute("""
+                ALTER TABLE grocery_receipts
+                ADD COLUMN IF NOT EXISTS user_id TEXT NOT NULL DEFAULT ''
+            """)
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_grocery_receipts_user ON grocery_receipts(user_id)")
+            cur.execute("""
                 CREATE TABLE IF NOT EXISTS grocery_items (
                     id           SERIAL PRIMARY KEY,
                     receipt_id   INTEGER REFERENCES grocery_receipts(id) ON DELETE CASCADE,
@@ -157,14 +162,14 @@ def save_analysis(filename, prompt, analysis, prompt_tokens, completion_tokens, 
 
 # ── grocery receipts ───────────────────────────────────────────────────────────
 
-def save_grocery_receipt(result: dict) -> int:
+def save_grocery_receipt(result: dict, user_id: str = "") -> int:
     """Pass 1 결과를 DB에 저장. receipt id 반환."""
     purchase_date = result.get("purchase_date") or None
     with _get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                INSERT INTO grocery_receipts (purchase_date, merchant, total, currency, is_refund, raw_json)
-                VALUES (%s, %s, %s, %s, %s, %s) RETURNING id
+                INSERT INTO grocery_receipts (purchase_date, merchant, total, currency, is_refund, raw_json, user_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id
             """, (
                 purchase_date,
                 result.get("merchant"),
@@ -172,6 +177,7 @@ def save_grocery_receipt(result: dict) -> int:
                 result.get("currency", "KRW"),
                 result.get("is_refund", False),
                 json.dumps(result, ensure_ascii=False),
+                user_id,
             ))
             receipt_id = cur.fetchone()[0]
             for item in result.get("items", []):
@@ -190,7 +196,7 @@ def save_grocery_receipt(result: dict) -> int:
     return receipt_id
 
 
-def get_recent_groceries(days: int = 7) -> list[dict]:
+def get_recent_groceries(days: int = 7, user_id: str = "") -> list[dict]:
     """최근 N일 구매 이력을 영수증+품목 포함해서 반환 (챗봇 컨텍스트용)."""
     cutoff = date.today() - timedelta(days=days)
     with _get_conn() as conn:
@@ -207,10 +213,10 @@ def get_recent_groceries(days: int = 7) -> list[dict]:
                     ) AS items
                 FROM grocery_receipts r
                 LEFT JOIN grocery_items i ON i.receipt_id = r.id
-                WHERE r.purchase_date >= %s AND NOT r.is_refund
+                WHERE r.purchase_date >= %s AND NOT r.is_refund AND r.user_id = %s
                 GROUP BY r.id
                 ORDER BY r.purchase_date DESC, r.id DESC
-            """, (cutoff,))
+            """, (cutoff, user_id))
             rows = cur.fetchall()
             return [{
                 "id": r["id"],
@@ -221,7 +227,7 @@ def get_recent_groceries(days: int = 7) -> list[dict]:
             } for r in rows]
 
 
-def list_grocery_receipts(days: int = 30) -> list[dict]:
+def list_grocery_receipts(days: int = 30, user_id: str = "") -> list[dict]:
     """구매 이력 API용 요약 목록."""
     cutoff = date.today() - timedelta(days=days)
     with _get_conn() as conn:
@@ -232,10 +238,10 @@ def list_grocery_receipts(days: int = 30) -> list[dict]:
                     COUNT(i.id) FILTER (WHERE NOT i.is_cancelled) AS item_count
                 FROM grocery_receipts r
                 LEFT JOIN grocery_items i ON i.receipt_id = r.id
-                WHERE r.purchase_date >= %s
+                WHERE r.purchase_date >= %s AND r.user_id = %s
                 GROUP BY r.id
                 ORDER BY r.purchase_date DESC, r.created_at DESC
-            """, (cutoff,))
+            """, (cutoff, user_id))
             return [dict(r) for r in cur.fetchall()]
 
 

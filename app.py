@@ -11,6 +11,8 @@ import os
 from contextlib import asynccontextmanager
 from datetime import date
 
+import fitz  # PyMuPDF
+
 from fastapi import FastAPI, File, Form, UploadFile, Body
 from fastapi.responses import HTMLResponse, StreamingResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -81,6 +83,7 @@ class MemorySetRequest(BaseModel):
 
 class GrocerySaveRequest(BaseModel):
     result: dict
+    user_id: str = ""
 
 
 # ---------- helpers ----------
@@ -197,13 +200,13 @@ async def clear_memory(session_id: str = ""):
 
 # ---------- chat ----------
 
-async def _inject_grocery_context(c) -> None:
+async def _inject_grocery_context(c, user_id: str = "") -> None:
     """최근 7일 구매 이력을 클라이언트 transient context에 주입."""
     if not state.db_enabled:
         return
     loop = asyncio.get_event_loop()
     try:
-        rows = await loop.run_in_executor(None, lambda: db.get_recent_groceries(7))
+        rows = await loop.run_in_executor(None, lambda: db.get_recent_groceries(7, user_id))
         summary = _build_purchase_summary(rows)
         if summary:
             c.set_transient("grocery", summary)
@@ -216,7 +219,7 @@ async def _inject_grocery_context(c) -> None:
 @app.post("/chat")
 async def chat(req: ChatRequest):
     c = _client(req.session_id)
-    await _inject_grocery_context(c)
+    await _inject_grocery_context(c, req.session_id)
     loop = asyncio.get_event_loop()
     reply, usage = await loop.run_in_executor(None, lambda: c.chat(req.message))
     turn_cost_usd = usage.cost(c.config.input_price_per_m, c.config.output_price_per_m)
@@ -227,7 +230,7 @@ async def chat(req: ChatRequest):
 @app.post("/chat/stream")
 async def chat_stream(req: ChatRequest):
     c = _client(req.session_id)
-    await _inject_grocery_context(c)
+    await _inject_grocery_context(c, req.session_id)
 
     async def event_generator():
         loop = asyncio.get_event_loop()
@@ -311,11 +314,18 @@ async def grocery_page():
 
 @app.post("/grocery/extract")
 async def grocery_extract(image: UploadFile = File(...)):
-    """Pass 1: 영수증 이미지 → JSON 추출 + 검증."""
+    """Pass 1: 영수증 이미지/PDF → JSON 추출 + 검증."""
     content = await image.read()
     mime_type = image.content_type or "image/jpeg"
-    config = ClientConfig()
 
+    # PDF → PNG 변환 (첫 페이지)
+    if mime_type == "application/pdf" or (image.filename or "").lower().endswith(".pdf"):
+        doc = fitz.open(stream=content, filetype="pdf")
+        pix = doc[0].get_pixmap(dpi=200)
+        content = pix.tobytes("png")
+        mime_type = "image/png"
+
+    config = ClientConfig()
     loop = asyncio.get_event_loop()
     result, raw = await loop.run_in_executor(
         None, lambda: extract_pass1_bytes(content, mime_type, config)
@@ -334,18 +344,18 @@ async def grocery_save(req: GrocerySaveRequest):
         return {"ok": False, "reason": "db_not_enabled"}
     loop = asyncio.get_event_loop()
     receipt_id = await loop.run_in_executor(
-        None, lambda: db.save_grocery_receipt(req.result)
+        None, lambda: db.save_grocery_receipt(req.result, req.user_id)
     )
     return {"ok": True, "receipt_id": receipt_id}
 
 
 @app.get("/grocery/history")
-async def grocery_history(days: int = 30):
+async def grocery_history(days: int = 30, user_id: str = ""):
     """최근 N일 구매 이력 반환."""
     if not state.db_enabled:
         return []
     loop = asyncio.get_event_loop()
-    rows = await loop.run_in_executor(None, lambda: db.list_grocery_receipts(days))
+    rows = await loop.run_in_executor(None, lambda: db.list_grocery_receipts(days, user_id))
     for r in rows:
         if r.get("purchase_date"):
             r["purchase_date"] = r["purchase_date"].isoformat()
@@ -355,12 +365,12 @@ async def grocery_history(days: int = 30):
 
 
 @app.get("/grocery/recent")
-async def grocery_recent(days: int = 90):
+async def grocery_recent(days: int = 90, user_id: str = ""):
     """카드 렌더링용: 최근 N일 구매 이력 (품목 포함)."""
     if not state.db_enabled:
         return []
     loop = asyncio.get_event_loop()
-    rows = await loop.run_in_executor(None, lambda: db.get_recent_groceries(days))
+    rows = await loop.run_in_executor(None, lambda: db.get_recent_groceries(days, user_id))
     return rows
 
 
