@@ -59,6 +59,7 @@ class AzureOpenAIClient:
         self.config = config or ClientConfig()
         self._base_system_prompt = base_system_prompt
         self._memory: dict[str, str] = _load_memory()
+        self._transient: dict[str, str] = {}
         self._conversation: list[dict] = [{"role": "system", "content": self._build_system_prompt()}]
         self._client = self._build_client()
         self._usage_history: list[TurnUsage] = []
@@ -70,6 +71,9 @@ class AzureOpenAIClient:
         if self._memory:
             lines = "\n".join(f"- {k}: {v}" for k, v in self._memory.items())
             parts.append(f"[사용자 정보]\n{lines}")
+        if self._transient:
+            lines = "\n".join(f"{v}" for v in self._transient.values())
+            parts.append(lines)
         return "\n\n".join(parts)
 
     def _refresh_system_prompt(self) -> None:
@@ -96,6 +100,16 @@ class AzureOpenAIClient:
 
     def get_memory(self) -> dict[str, str]:
         return dict(self._memory)
+
+    # ── transient context (not persisted) ─────────────────────────────────────
+
+    def set_transient(self, key: str, value: str) -> None:
+        self._transient[key] = value
+        self._refresh_system_prompt()
+
+    def clear_transient(self, key: str) -> None:
+        self._transient.pop(key, None)
+        self._refresh_system_prompt()
 
     # ── sliding window ─────────────────────────────────────────────────────────
 

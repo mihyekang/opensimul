@@ -55,6 +55,7 @@ Strict rules:
    • "N pay" / "Npay+" / "N pay 내역" / "네이버페이" visible → "네이버쇼핑"
    • "마켓컬리" → "마켓컬리"
    • "오아시스" → "오아시스"
+   • "펫프렌즈" / "PETFRIENDS" / "petfriends" → "펫프렌즈"
    If no signal found → null.
 6. raw_name → copy item name character-by-character.
    For app order history screens: product name only (strip "옵션:", "[무료배송]", status labels, etc.)

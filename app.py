@@ -11,7 +11,7 @@ import os
 from contextlib import asynccontextmanager
 from datetime import date
 
-from fastapi import FastAPI, File, Form, UploadFile
+from fastapi import FastAPI, File, Form, UploadFile, Body
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -79,10 +79,33 @@ class MemorySetRequest(BaseModel):
     value: str
 
 
+class GrocerySaveRequest(BaseModel):
+    result: dict
+
+
 # ---------- helpers ----------
 
 def _client(session_id: str):
     return state.session_manager.get_client(session_id)
+
+
+def _build_purchase_summary(rows: list[dict]) -> str:
+    """최근 구매 이력을 챗봇 시스템 프롬프트용 컴팩트 텍스트로 변환."""
+    if not rows:
+        return ""
+    lines = ["[최근 구매 내역]"]
+    for r in rows[:10]:
+        merchant = r.get("merchant") or "알 수 없음"
+        pdate = r.get("purchase_date") or ""
+        total = r.get("total")
+        items = r.get("items") or []
+        item_names = [i["raw_name"] for i in items if i.get("raw_name") and (i.get("amount") or 0) > 0]
+        item_str = ", ".join(item_names[:4])
+        if len(item_names) > 4:
+            item_str += f" 외 {len(item_names)-4}건"
+        total_str = f" 합계 {total:,}원" if total else ""
+        lines.append(f"{pdate} {merchant}: {item_str}{total_str}")
+    return "\n".join(lines)
 
 
 def _build_usage(client, usage, turn_cost_usd: float) -> dict:
@@ -169,9 +192,26 @@ async def clear_memory(session_id: str = ""):
 
 # ---------- chat ----------
 
+async def _inject_grocery_context(c) -> None:
+    """최근 7일 구매 이력을 클라이언트 transient context에 주입."""
+    if not state.db_enabled:
+        return
+    loop = asyncio.get_event_loop()
+    try:
+        rows = await loop.run_in_executor(None, lambda: db.get_recent_groceries(7))
+        summary = _build_purchase_summary(rows)
+        if summary:
+            c.set_transient("grocery", summary)
+        else:
+            c.clear_transient("grocery")
+    except Exception as e:
+        logger.warning("구매 이력 조회 실패: %s", e)
+
+
 @app.post("/chat")
 async def chat(req: ChatRequest):
     c = _client(req.session_id)
+    await _inject_grocery_context(c)
     loop = asyncio.get_event_loop()
     reply, usage = await loop.run_in_executor(None, lambda: c.chat(req.message))
     turn_cost_usd = usage.cost(c.config.input_price_per_m, c.config.output_price_per_m)
@@ -182,6 +222,7 @@ async def chat(req: ChatRequest):
 @app.post("/chat/stream")
 async def chat_stream(req: ChatRequest):
     c = _client(req.session_id)
+    await _inject_grocery_context(c)
 
     async def event_generator():
         loop = asyncio.get_event_loop()
@@ -279,6 +320,33 @@ async def grocery_extract(image: UploadFile = File(...)):
         result["_date_inferred"] = True
     issues = validate(result)
     return {"result": result, "issues": issues, "raw": raw}
+
+
+@app.post("/grocery/save")
+async def grocery_save(req: GrocerySaveRequest):
+    """Pass 1 추출 결과를 DB에 저장."""
+    if not state.db_enabled:
+        return {"ok": False, "reason": "db_not_enabled"}
+    loop = asyncio.get_event_loop()
+    receipt_id = await loop.run_in_executor(
+        None, lambda: db.save_grocery_receipt(req.result)
+    )
+    return {"ok": True, "receipt_id": receipt_id}
+
+
+@app.get("/grocery/history")
+async def grocery_history(days: int = 30):
+    """최근 N일 구매 이력 반환."""
+    if not state.db_enabled:
+        return []
+    loop = asyncio.get_event_loop()
+    rows = await loop.run_in_executor(None, lambda: db.list_grocery_receipts(days))
+    for r in rows:
+        if r.get("purchase_date"):
+            r["purchase_date"] = r["purchase_date"].isoformat()
+        if r.get("created_at"):
+            r["created_at"] = r["created_at"].isoformat()
+    return rows
 
 
 @app.get("/analyses")

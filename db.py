@@ -1,7 +1,8 @@
 """
-PostgreSQL operations: image analyses, sessions, messages.
+PostgreSQL operations: image analyses, sessions, messages, grocery receipts.
 """
 
+import json
 import logging
 import os
 
@@ -47,6 +48,31 @@ def init_db() -> None:
                 )
             """)
             cur.execute("CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, created_at)")
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS grocery_receipts (
+                    id            SERIAL PRIMARY KEY,
+                    created_at    TIMESTAMPTZ DEFAULT NOW(),
+                    purchase_date DATE,
+                    merchant      TEXT,
+                    total         INTEGER,
+                    currency      TEXT DEFAULT 'KRW',
+                    is_refund     BOOLEAN DEFAULT FALSE,
+                    raw_json      JSONB
+                )
+            """)
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_grocery_receipts_date ON grocery_receipts(purchase_date DESC)")
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS grocery_items (
+                    id           SERIAL PRIMARY KEY,
+                    receipt_id   INTEGER REFERENCES grocery_receipts(id) ON DELETE CASCADE,
+                    raw_name     TEXT NOT NULL,
+                    qty          INTEGER DEFAULT 1,
+                    unit_price   INTEGER,
+                    amount       INTEGER,
+                    is_cancelled BOOLEAN DEFAULT FALSE
+                )
+            """)
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_grocery_items_receipt ON grocery_items(receipt_id)")
         conn.commit()
 
 
@@ -125,6 +151,89 @@ def save_analysis(filename, prompt, analysis, prompt_tokens, completion_tokens, 
             row = dict(cur.fetchone())
         conn.commit()
     return row
+
+
+# ── grocery receipts ───────────────────────────────────────────────────────────
+
+def save_grocery_receipt(result: dict) -> int:
+    """Pass 1 결과를 DB에 저장. receipt id 반환."""
+    purchase_date = result.get("purchase_date") or None
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO grocery_receipts (purchase_date, merchant, total, currency, is_refund, raw_json)
+                VALUES (%s, %s, %s, %s, %s, %s) RETURNING id
+            """, (
+                purchase_date,
+                result.get("merchant"),
+                result.get("total"),
+                result.get("currency", "KRW"),
+                result.get("is_refund", False),
+                json.dumps(result, ensure_ascii=False),
+            ))
+            receipt_id = cur.fetchone()[0]
+            for item in result.get("items", []):
+                cur.execute("""
+                    INSERT INTO grocery_items (receipt_id, raw_name, qty, unit_price, amount, is_cancelled)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (
+                    receipt_id,
+                    item.get("raw_name", ""),
+                    item.get("qty", 1),
+                    item.get("unit_price"),
+                    item.get("amount"),
+                    item.get("is_cancelled", False),
+                ))
+        conn.commit()
+    return receipt_id
+
+
+def get_recent_groceries(days: int = 7) -> list[dict]:
+    """최근 N일 구매 이력을 영수증+품목 포함해서 반환 (챗봇 컨텍스트용)."""
+    with _get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT
+                    r.id, r.merchant, r.purchase_date, r.total, r.is_refund,
+                    COALESCE(
+                        json_agg(
+                            json_build_object('raw_name', i.raw_name, 'amount', i.amount)
+                            ORDER BY i.id
+                        ) FILTER (WHERE i.id IS NOT NULL AND NOT i.is_cancelled AND i.amount > 0),
+                        '[]'::json
+                    ) AS items
+                FROM grocery_receipts r
+                LEFT JOIN grocery_items i ON i.receipt_id = r.id
+                WHERE r.purchase_date >= CURRENT_DATE - (%s * INTERVAL '1 day')
+                  AND NOT r.is_refund
+                GROUP BY r.id
+                ORDER BY r.purchase_date DESC, r.id DESC
+            """, (days,))
+            rows = cur.fetchall()
+            return [{
+                "id": r["id"],
+                "merchant": r["merchant"],
+                "purchase_date": r["purchase_date"].isoformat() if r["purchase_date"] else None,
+                "total": r["total"],
+                "items": r["items"] or [],
+            } for r in rows]
+
+
+def list_grocery_receipts(days: int = 30) -> list[dict]:
+    """구매 이력 API용 요약 목록."""
+    with _get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT
+                    r.id, r.merchant, r.purchase_date, r.total, r.is_refund, r.created_at,
+                    COUNT(i.id) FILTER (WHERE NOT i.is_cancelled) AS item_count
+                FROM grocery_receipts r
+                LEFT JOIN grocery_items i ON i.receipt_id = r.id
+                WHERE r.purchase_date >= CURRENT_DATE - (%s * INTERVAL '1 day')
+                GROUP BY r.id
+                ORDER BY r.purchase_date DESC, r.created_at DESC
+            """, (days,))
+            return [dict(r) for r in cur.fetchall()]
 
 
 def list_analyses(limit: int = 50) -> list[dict]:

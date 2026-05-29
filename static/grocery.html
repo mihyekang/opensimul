@@ -273,6 +273,35 @@
       font-weight: 600;
     }
 
+    /* save button */
+    .save-btn {
+      display: block;
+      width: 100%;
+      padding: 10px;
+      margin-top: 10px;
+      background: #16a34a;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .save-btn:hover:not(:disabled) { background: #15803d; }
+    .save-btn:disabled { background: #86efac; cursor: not-allowed; }
+    .save-badge {
+      display: block;
+      text-align: center;
+      padding: 8px;
+      margin-top: 10px;
+      background: #f0fdf4;
+      border: 1px solid #86efac;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      color: #166534;
+    }
+
     /* raw JSON toggle */
     .raw-toggle {
       font-size: 0.75rem;
@@ -547,6 +576,36 @@
     else if (hasDiscount) subNote = "(할인 포함)";
     totalEl.innerHTML = fmt(activeSum) +
       (subNote ? `<span class="total-sub">${subNote}</span>` : "");
+
+    // save button
+    const saveBtn = document.createElement("button");
+    saveBtn.className = "save-btn";
+    saveBtn.textContent = "💾 장보기 기록에 저장";
+    saveBtn.addEventListener("click", async () => {
+      saveBtn.disabled = true;
+      saveBtn.textContent = "저장 중…";
+      try {
+        const resp = await fetch("/grocery/save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ result }),
+        });
+        const data = await resp.json();
+        if (data.ok) {
+          const badge = document.createElement("div");
+          badge.className = "save-badge";
+          badge.textContent = `✅ 저장 완료 (ID: ${data.receipt_id})`;
+          saveBtn.replaceWith(badge);
+        } else {
+          saveBtn.textContent = `저장 실패: ${data.reason || "오류"}`;
+          saveBtn.disabled = false;
+        }
+      } catch (e) {
+        saveBtn.textContent = `저장 오류: ${e.message}`;
+        saveBtn.disabled = false;
+      }
+    });
+    section.appendChild(saveBtn);
 
     // raw JSON toggle
     const toggle = document.createElement("button");
