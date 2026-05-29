@@ -1304,6 +1304,17 @@
             card.classList.add("deleted");
             idBadge.textContent = "✓";
             delBtn.textContent = "삭제됨";
+            const totalStr = r.total != null ? " · " + r.total.toLocaleString("ko-KR") + "원" : "";
+            const label = `${r.merchant || "알 수 없음"} · ${r.purchase_date || "날짜 미상"}${totalStr}`;
+            fetch("/chat/note", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                session_id: SESSION_ID,
+                user_note: `[영수증 삭제] #${r.id}: ${label}`,
+                assistant_note: `영수증 #${r.id} (${label})이 삭제됐어요. 이제 구매 이력에서 제외됩니다.`,
+              }),
+            }).catch(() => {});
           } else {
             delBtn.disabled = false;
             delBtn.textContent = "🗑 삭제";
@@ -1350,8 +1361,9 @@
   }
 
   // ── receipt history panel ──
-  let _historyDeleteMode = false;
-  let _historySelected   = new Set();
+  let _historyDeleteMode    = false;
+  let _historySelected      = new Set();
+  let _historySelectedData  = new Map(); // id → {merchant, purchase_date, total}
 
   document.getElementById("history-close-btn").addEventListener("click", () => {
     document.getElementById("history-overlay").classList.remove("open");
@@ -1360,6 +1372,7 @@
   document.getElementById("history-del-toggle").addEventListener("click", () => {
     _historyDeleteMode = !_historyDeleteMode;
     _historySelected.clear();
+    _historySelectedData.clear();
     const toggle  = document.getElementById("history-del-toggle");
     const confirm = document.getElementById("history-del-confirm");
     const list    = document.getElementById("history-list");
@@ -1377,7 +1390,23 @@
     const ids = [..._historySelected];
     for (const id of ids) {
       try {
-        await fetch(`/grocery/receipt/${id}?user_id=${encodeURIComponent(USER_CODE)}`, { method: "DELETE" });
+        const resp = await fetch(`/grocery/receipt/${id}?user_id=${encodeURIComponent(USER_CODE)}`, { method: "DELETE" });
+        const data = await resp.json();
+        if (data.ok) {
+          const d = _historySelectedData.get(id);
+          const label = d
+            ? `${d.merchant || "알 수 없음"} · ${d.purchase_date || "날짜 미상"}${d.total != null ? " · " + d.total.toLocaleString("ko-KR") + "원" : ""}`
+            : `#${id}`;
+          fetch("/chat/note", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              session_id: SESSION_ID,
+              user_note: `[영수증 삭제] #${id}: ${label}`,
+              assistant_note: `영수증 #${id} (${label})이 삭제됐어요. 이제 구매 이력에서 제외됩니다.`,
+            }),
+          }).catch(() => {});
+        }
       } catch {}
     }
     await openHistoryPanel();
@@ -1386,6 +1415,7 @@
   async function openHistoryPanel() {
     _historyDeleteMode = false;
     _historySelected.clear();
+    _historySelectedData.clear();
     const toggle  = document.getElementById("history-del-toggle");
     const confirm = document.getElementById("history-del-confirm");
     const list    = document.getElementById("history-list");
@@ -1465,9 +1495,11 @@
         const id = parseInt(card.dataset.id);
         if (_historySelected.has(id)) {
           _historySelected.delete(id);
+          _historySelectedData.delete(id);
           card.classList.remove("checked");
         } else {
           _historySelected.add(id);
+          _historySelectedData.set(id, { merchant: r.merchant, purchase_date: r.purchase_date, total: r.total });
           card.classList.add("checked");
         }
         const confirmBtn = document.getElementById("history-del-confirm");

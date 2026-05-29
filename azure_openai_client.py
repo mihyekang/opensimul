@@ -120,6 +120,12 @@ class AzureOpenAIClient:
         if len(self._conversation) > max_msgs:
             self._conversation = [self._conversation[0]] + self._conversation[-(max_msgs - 1):]
 
+    def inject_turn(self, user_msg: str, assistant_msg: str) -> None:
+        """LLM 호출 없이 대화 이력에 user/assistant 한 턴을 추가합니다."""
+        self._conversation.append({"role": "user", "content": user_msg})
+        self._conversation.append({"role": "assistant", "content": assistant_msg})
+        self._trim_history()
+
     @property
     def current_turns(self) -> int:
         return (len(self._conversation) - 1) // 2

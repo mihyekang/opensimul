@@ -124,6 +124,12 @@ class TextExtractRequest(BaseModel):
     user_id: str = ""
 
 
+class ChatNoteRequest(BaseModel):
+    session_id: str
+    user_note: str
+    assistant_note: str
+
+
 # ---------- helpers ----------
 
 def _client(session_id: str):
@@ -300,6 +306,15 @@ async def chat_stream(req: ChatRequest):
             yield f"data: {json.dumps({'done': True, 'usage': _build_usage(c, last, turn_cost_usd)})}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@app.post("/chat/note")
+async def chat_note(req: ChatNoteRequest):
+    """LLM 호출 없이 대화 이력에 노트 주입 (영수증 삭제 알림 등)."""
+    c = _client(req.session_id)
+    c.inject_turn(req.user_note, req.assistant_note)
+    await _save_turn(req.session_id, req.user_note, req.assistant_note)
+    return {"ok": True}
 
 
 # ---------- image analysis ----------
