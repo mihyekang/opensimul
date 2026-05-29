@@ -204,8 +204,8 @@ async def _inject_grocery_context(c) -> None:
             c.set_transient("grocery", summary)
         else:
             c.clear_transient("grocery")
-    except Exception as e:
-        logger.warning("구매 이력 조회 실패: %s", e)
+    except Exception:
+        logger.exception("구매 이력 조회 실패")
 
 
 @app.post("/chat")
@@ -347,6 +347,25 @@ async def grocery_history(days: int = 30):
         if r.get("created_at"):
             r["created_at"] = r["created_at"].isoformat()
     return rows
+
+
+@app.get("/grocery/debug")
+async def grocery_debug():
+    """DB 연결 상태 및 최근 영수증 확인용 엔드포인트."""
+    if not state.db_enabled:
+        return {"db_enabled": False}
+    loop = asyncio.get_event_loop()
+    try:
+        rows = await loop.run_in_executor(None, lambda: db.list_grocery_receipts(30))
+        for r in rows:
+            if r.get("purchase_date"):
+                r["purchase_date"] = r["purchase_date"].isoformat()
+            if r.get("created_at"):
+                r["created_at"] = r["created_at"].isoformat()
+        return {"db_enabled": True, "receipt_count": len(rows), "receipts": rows}
+    except Exception as e:
+        logger.exception("grocery_debug 오류")
+        return {"db_enabled": True, "error": str(e)}
 
 
 @app.get("/analyses")

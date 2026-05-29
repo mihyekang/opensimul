@@ -5,6 +5,7 @@ PostgreSQL operations: image analyses, sessions, messages, grocery receipts.
 import json
 import logging
 import os
+from datetime import date, timedelta
 
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -122,11 +123,12 @@ def clear_messages(session_id: str) -> None:
 
 
 def cleanup_old_sessions(days: int = 7) -> int:
+    cutoff = date.today() - timedelta(days=days)
     with _get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "DELETE FROM sessions WHERE last_active < NOW() - INTERVAL '%s days'",
-                (days,),
+                "DELETE FROM sessions WHERE last_active < %s",
+                (cutoff,),
             )
             count = cur.rowcount
         conn.commit()
@@ -190,6 +192,7 @@ def save_grocery_receipt(result: dict) -> int:
 
 def get_recent_groceries(days: int = 7) -> list[dict]:
     """최근 N일 구매 이력을 영수증+품목 포함해서 반환 (챗봇 컨텍스트용)."""
+    cutoff = date.today() - timedelta(days=days)
     with _get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("""
@@ -204,11 +207,10 @@ def get_recent_groceries(days: int = 7) -> list[dict]:
                     ) AS items
                 FROM grocery_receipts r
                 LEFT JOIN grocery_items i ON i.receipt_id = r.id
-                WHERE r.purchase_date >= CURRENT_DATE - (%s * INTERVAL '1 day')
-                  AND NOT r.is_refund
+                WHERE r.purchase_date >= %s AND NOT r.is_refund
                 GROUP BY r.id
                 ORDER BY r.purchase_date DESC, r.id DESC
-            """, (days,))
+            """, (cutoff,))
             rows = cur.fetchall()
             return [{
                 "id": r["id"],
@@ -221,6 +223,7 @@ def get_recent_groceries(days: int = 7) -> list[dict]:
 
 def list_grocery_receipts(days: int = 30) -> list[dict]:
     """구매 이력 API용 요약 목록."""
+    cutoff = date.today() - timedelta(days=days)
     with _get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("""
@@ -229,10 +232,10 @@ def list_grocery_receipts(days: int = 30) -> list[dict]:
                     COUNT(i.id) FILTER (WHERE NOT i.is_cancelled) AS item_count
                 FROM grocery_receipts r
                 LEFT JOIN grocery_items i ON i.receipt_id = r.id
-                WHERE r.purchase_date >= CURRENT_DATE - (%s * INTERVAL '1 day')
+                WHERE r.purchase_date >= %s
                 GROUP BY r.id
                 ORDER BY r.purchase_date DESC, r.created_at DESC
-            """, (days,))
+            """, (cutoff,))
             return [dict(r) for r in cur.fetchall()]
 
 
