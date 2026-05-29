@@ -461,6 +461,65 @@
       max-height: 300px;
       overflow-y: auto;
     }
+
+    /* mode tabs */
+    .mode-tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .mode-tab {
+      flex: 1;
+      padding: 10px 0;
+      border: 2px solid #e0e0e0;
+      border-radius: 10px;
+      background: #fff;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #888;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s, background 0.15s;
+    }
+    .mode-tab.active {
+      border-color: #0078d4;
+      color: #0078d4;
+      background: #e8f3fc;
+    }
+
+    /* text section */
+    #text-section { display: none; }
+    #receipt-text-input {
+      width: 100%;
+      box-sizing: border-box;
+      min-height: 220px;
+      padding: 14px;
+      border: 2px solid #e0e0e0;
+      border-radius: 12px;
+      font-size: 0.9rem;
+      font-family: monospace;
+      resize: vertical;
+      line-height: 1.5;
+      background: #fafbfc;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    #receipt-text-input:focus { border-color: #0078d4; }
+    #text-extract-btn {
+      display: block;
+      width: 100%;
+      margin-top: 12px;
+      padding: 12px 0;
+      border: none;
+      border-radius: 12px;
+      background: #0078d4;
+      color: #fff;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    #text-extract-btn:disabled { background: #b0c8e8; cursor: not-allowed; }
+    #text-extract-btn:not(:disabled):hover { background: #005fa3; }
   </style>
 </head>
 <body>
@@ -473,18 +532,30 @@
   </div>
 </div>
 <h1>영수증 가져오기</h1>
-<p class="subtitle">이미지 업로드 → 품목 추출 → 검증 결과 확인</p>
+<p class="subtitle">이미지 업로드 또는 텍스트 붙여넣기 → 품목 추출 → 검증 결과 확인</p>
 
-<div id="drop-zone">
-  <div class="icon">🧾</div>
-  <p><strong>클릭</strong>하거나 이미지/PDF를 여기로 드래그하세요<br>
-  여러 장 동시 선택 가능 · JPG · PNG · PDF 지원</p>
-  <input type="file" id="file-input" accept="image/*,application/pdf" multiple />
+<div class="mode-tabs">
+  <button id="tab-img" class="mode-tab active">📷 이미지/PDF</button>
+  <button id="tab-text" class="mode-tab">📝 텍스트 붙여넣기</button>
 </div>
 
-<div id="thumb-strip"></div>
+<div id="img-section">
+  <div id="drop-zone">
+    <div class="icon">🧾</div>
+    <p><strong>클릭</strong>하거나 이미지/PDF를 여기로 드래그하세요<br>
+    여러 장 동시 선택 가능 · JPG · PNG · PDF 지원</p>
+    <input type="file" id="file-input" accept="image/*,application/pdf" multiple />
+  </div>
 
-<button id="extract-btn" disabled>추출하기</button>
+  <div id="thumb-strip"></div>
+
+  <button id="extract-btn" disabled>추출하기</button>
+</div>
+
+<div id="text-section">
+  <textarea id="receipt-text-input" placeholder="영수증 텍스트를 여기에 붙여넣으세요&#10;(쇼핑몰 주문 내역, 이마트 영수증 텍스트 등)"></textarea>
+  <button id="text-extract-btn">추출하기</button>
+</div>
 
 <div id="progress-wrap">
   <div class="progress-bar-bg"><div id="progress-bar"></div></div>
@@ -513,16 +584,37 @@
 </div>
 
 <script>
-  const dropZone      = document.getElementById("drop-zone");
-  const fileInput     = document.getElementById("file-input");
-  const thumbStrip    = document.getElementById("thumb-strip");
-  const extractBtn    = document.getElementById("extract-btn");
-  const progressWrap  = document.getElementById("progress-wrap");
-  const progressBar   = document.getElementById("progress-bar");
-  const progressLabel = document.getElementById("progress-label");
-  const resultWrap    = document.getElementById("result-wrap");
-  const bulkSaveBar   = document.getElementById("bulk-save-bar");
-  const bulkSaveBtn   = document.getElementById("bulk-save-btn");
+  const dropZone        = document.getElementById("drop-zone");
+  const fileInput       = document.getElementById("file-input");
+  const thumbStrip      = document.getElementById("thumb-strip");
+  const extractBtn      = document.getElementById("extract-btn");
+  const progressWrap    = document.getElementById("progress-wrap");
+  const progressBar     = document.getElementById("progress-bar");
+  const progressLabel   = document.getElementById("progress-label");
+  const resultWrap      = document.getElementById("result-wrap");
+  const bulkSaveBar     = document.getElementById("bulk-save-bar");
+  const bulkSaveBtn     = document.getElementById("bulk-save-btn");
+  const imgSection      = document.getElementById("img-section");
+  const textSection     = document.getElementById("text-section");
+  const textInput       = document.getElementById("receipt-text-input");
+  const textExtractBtn  = document.getElementById("text-extract-btn");
+
+  // ── mode tabs ──
+  let inputMode = "img";
+  document.getElementById("tab-img").addEventListener("click", () => {
+    inputMode = "img";
+    document.getElementById("tab-img").classList.add("active");
+    document.getElementById("tab-text").classList.remove("active");
+    imgSection.style.display = "block";
+    textSection.style.display = "none";
+  });
+  document.getElementById("tab-text").addEventListener("click", () => {
+    inputMode = "text";
+    document.getElementById("tab-text").classList.add("active");
+    document.getElementById("tab-img").classList.remove("active");
+    textSection.style.display = "block";
+    imgSection.style.display = "none";
+  });
 
   // ── auth ──
   let authMode = "login";
@@ -723,6 +815,53 @@
 
     resultWrap.scrollIntoView({ behavior: "smooth" });
     extractBtn.disabled = false;
+  });
+
+  // ── text extract ──
+  textExtractBtn.addEventListener("click", async () => {
+    const text = textInput.value.trim();
+    if (!text) return;
+
+    textExtractBtn.disabled = true;
+    bulkSaveBar.style.display = "none";
+    progressWrap.style.display = "block";
+    progressBar.style.width = "50%";
+    progressLabel.textContent = "텍스트 분석 중…";
+    resultWrap.style.display = "none";
+    resultWrap.innerHTML = "";
+    extractedResults = [];
+
+    try {
+      const resp = await fetch("/grocery/extract-text", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, user_id: USER_ID }),
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+
+      const entry = { result: data.result, filename: "텍스트 입력", saved: false };
+      extractedResults.push(entry);
+      const section = buildResultSection("텍스트 입력", data, entry);
+      resultWrap.appendChild(section);
+    } catch (err) {
+      const errDiv = document.createElement("div");
+      errDiv.className = "result-section";
+      errDiv.innerHTML = `<p class="result-file-label">텍스트 입력</p><div class="issues"><p>🔴 오류: ${escHtml(err.message)}</p></div>`;
+      resultWrap.appendChild(errDiv);
+    }
+
+    progressBar.style.width = "100%";
+    progressWrap.style.display = "none";
+    resultWrap.style.display = "block";
+
+    if (extractedResults.length > 0) {
+      updateBulkSaveBtn();
+      bulkSaveBar.style.display = "block";
+    }
+
+    resultWrap.scrollIntoView({ behavior: "smooth" });
+    textExtractBtn.disabled = false;
   });
 
   // ── bulk save ──

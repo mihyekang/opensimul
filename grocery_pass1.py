@@ -134,6 +134,35 @@ def extract_pass1(image_path: str, config: ClientConfig) -> tuple[dict, str]:
         return extract_pass1_bytes(f.read(), mime, config)
 
 
+def extract_pass1_text(text: str, config: ClientConfig) -> tuple[dict, str]:
+    """텍스트로 붙여넣은 영수증에서 Pass 1 JSON 추출."""
+    client = AzureOpenAI(
+        azure_endpoint=config.endpoint,
+        api_key=config.api_key,
+        api_version=config.api_version,
+        http_client=httpx.Client(verify=config.verify_ssl),
+    )
+
+    response = client.chat.completions.create(
+        model=config.deployment,
+        messages=[
+            {"role": "system", "content": PASS1_SYSTEM},
+            {"role": "user", "content": f"다음은 영수증 텍스트입니다. 아래 지시에 따라 JSON을 추출하세요.\n\n{PASS1_USER}\n\n영수증 텍스트:\n{text}"},
+        ],
+        max_completion_tokens=4096,
+        temperature=0,
+    )
+
+    raw = response.choices[0].message.content.strip()
+    if raw.startswith("```"):
+        raw = raw.split("```")[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+    raw = raw.strip()
+
+    return json.loads(raw), raw
+
+
 # ── 검증 ──────────────────────────────────────────────────────────────────────
 
 def validate(result: dict) -> list[str]:

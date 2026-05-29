@@ -22,7 +22,7 @@ from pydantic import BaseModel
 
 import db
 from azure_openai_client import ClientConfig
-from grocery_pass1 import extract_pass1_bytes, validate
+from grocery_pass1 import extract_pass1_bytes, extract_pass1_text, validate
 from repl import fetch_usd_to_krw
 from session_manager import SessionManager
 
@@ -116,6 +116,11 @@ class MemorySetRequest(BaseModel):
 
 class GrocerySaveRequest(BaseModel):
     result: dict
+    user_id: str = ""
+
+
+class TextExtractRequest(BaseModel):
+    text: str
     user_id: str = ""
 
 
@@ -365,6 +370,23 @@ async def grocery_extract(image: UploadFile = File(...)):
     loop = asyncio.get_event_loop()
     result, raw = await loop.run_in_executor(
         None, lambda: extract_pass1_bytes(content, mime_type, config)
+    )
+    if not result.get("purchase_date"):
+        result["purchase_date"] = date.today().isoformat()
+        result["_date_inferred"] = True
+    issues = validate(result)
+    return {"result": result, "issues": issues, "raw": raw}
+
+
+@app.post("/grocery/extract-text")
+async def grocery_extract_text(req: TextExtractRequest):
+    """Pass 1: 붙여넣은 영수증 텍스트 → JSON 추출 + 검증."""
+    if not req.text or not req.text.strip():
+        raise HTTPException(status_code=400, detail="text is empty")
+    config = ClientConfig()
+    loop = asyncio.get_event_loop()
+    result, raw = await loop.run_in_executor(
+        None, lambda: extract_pass1_text(req.text.strip(), config)
     )
     if not result.get("purchase_date"):
         result["purchase_date"] = date.today().isoformat()
