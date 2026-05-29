@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>영수증 추출 테스트</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f5f6f8;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 16px 48px;
+    }
+
+    h1 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #111;
+      margin-bottom: 4px;
+    }
+    .subtitle {
+      font-size: 0.78rem;
+      color: #888;
+      margin-bottom: 24px;
+    }
+
+    /* ── upload zone ── */
+    #drop-zone {
+      width: 100%;
+      max-width: 480px;
+      border: 2px dashed #c8cdd5;
+      border-radius: 14px;
+      background: #fff;
+      padding: 36px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      margin-bottom: 20px;
+    }
+    #drop-zone.drag-over {
+      border-color: #0078d4;
+      background: #f0f7ff;
+    }
+    #drop-zone .icon { font-size: 2.2rem; margin-bottom: 10px; }
+    #drop-zone p { font-size: 0.85rem; color: #666; line-height: 1.6; }
+    #drop-zone strong { color: #0078d4; }
+    #file-input { display: none; }
+
+    /* ── preview ── */
+    #preview-wrap {
+      display: none;
+      width: 100%;
+      max-width: 480px;
+      margin-bottom: 20px;
+      position: relative;
+    }
+    #preview-img {
+      width: 100%;
+      border-radius: 10px;
+      border: 1px solid #e0e0e0;
+      max-height: 320px;
+      object-fit: contain;
+      background: #fff;
+    }
+    #change-btn {
+      position: absolute;
+      top: 8px; right: 8px;
+      background: rgba(0,0,0,.5);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 0.72rem;
+      cursor: pointer;
+    }
+
+    /* ── extract button ── */
+    #extract-btn {
+      width: 100%;
+      max-width: 480px;
+      padding: 13px;
+      background: #0078d4;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      margin-bottom: 24px;
+      transition: background 0.15s;
+    }
+    #extract-btn:hover:not(:disabled) { background: #106ebe; }
+    #extract-btn:disabled { background: #b0c8e8; cursor: not-allowed; }
+
+    /* ── loading ── */
+    #loading {
+      display: none;
+      font-size: 0.85rem;
+      color: #555;
+      margin-bottom: 16px;
+    }
+    .spinner {
+      display: inline-block;
+      width: 16px; height: 16px;
+      border: 2px solid #ccc;
+      border-top-color: #0078d4;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── result card ── */
+    #result-wrap {
+      display: none;
+      width: 100%;
+      max-width: 480px;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      border: 1px solid #e5e7eb;
+      padding: 18px 16px;
+      margin-bottom: 12px;
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+    .merchant { font-size: 1rem; font-weight: 700; color: #111; }
+    .date     { font-size: 0.78rem; color: #888; }
+
+    .items-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+      margin-bottom: 12px;
+    }
+    .items-table th {
+      text-align: left;
+      color: #888;
+      font-weight: 500;
+      padding: 4px 6px 8px;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    .items-table td {
+      padding: 6px 6px;
+      border-bottom: 1px solid #f8f8f8;
+      color: #333;
+    }
+    .items-table td.amount { text-align: right; font-variant-numeric: tabular-nums; }
+    .items-table td.qty { text-align: center; color: #888; }
+
+    .total-row {
+      display: flex;
+      justify-content: space-between;
+      padding-top: 10px;
+      border-top: 1px solid #e5e7eb;
+      font-weight: 700;
+      font-size: 0.92rem;
+    }
+
+    /* issues */
+    .issues {
+      background: #fff8e1;
+      border: 1px solid #ffe082;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 0.78rem;
+      color: #7a5c00;
+      margin-bottom: 12px;
+    }
+    .issues p { margin: 2px 0; }
+
+    /* refund badge */
+    .badge-refund {
+      background: #fee2e2;
+      color: #b91c1c;
+      font-size: 0.7rem;
+      padding: 2px 8px;
+      border-radius: 20px;
+      font-weight: 600;
+    }
+
+    /* raw JSON toggle */
+    .raw-toggle {
+      font-size: 0.75rem;
+      color: #0078d4;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 0;
+      margin-bottom: 6px;
+    }
+    #raw-json {
+      display: none;
+      background: #f6f8fa;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 0.72rem;
+      font-family: monospace;
+      white-space: pre-wrap;
+      word-break: break-all;
+      color: #333;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+  </style>
+</head>
+<body>
+
+<h1>영수증 추출 테스트 — Pass 1</h1>
+<p class="subtitle">이미지 업로드 → 품목 추출 → 검증 결과 확인</p>
+
+<div id="drop-zone">
+  <div class="icon">🧾</div>
+  <p><strong>클릭</strong>하거나 이미지를 여기로 드래그하세요<br>
+  이마트 · 쿠팡 · 네이버 영수증 모두 가능</p>
+  <input type="file" id="file-input" accept="image/*" />
+</div>
+
+<div id="preview-wrap">
+  <img id="preview-img" src="" alt="preview" />
+  <button id="change-btn">변경</button>
+</div>
+
+<button id="extract-btn" disabled>추출하기</button>
+<div id="loading"><span class="spinner"></span>추출 중…</div>
+
+<div id="result-wrap">
+  <div id="issues-box" class="issues" style="display:none"></div>
+
+  <div class="card">
+    <div class="card-header">
+      <span class="merchant" id="r-merchant">—</span>
+      <span>
+        <span id="r-refund" class="badge-refund" style="display:none">환불</span>
+        <span class="date" id="r-date">—</span>
+      </span>
+    </div>
+
+    <table class="items-table">
+      <thead>
+        <tr>
+          <th>품목 (raw)</th>
+          <th class="qty">수량</th>
+          <th style="text-align:right">금액</th>
+        </tr>
+      </thead>
+      <tbody id="r-items"></tbody>
+    </table>
+
+    <div class="total-row">
+      <span>합계</span>
+      <span id="r-total">—</span>
+    </div>
+  </div>
+
+  <button class="raw-toggle" id="raw-toggle">▶ JSON 원본 보기</button>
+  <pre id="raw-json"></pre>
+</div>
+
+<script>
+  const dropZone   = document.getElementById("drop-zone");
+  const fileInput  = document.getElementById("file-input");
+  const previewWrap= document.getElementById("preview-wrap");
+  const previewImg = document.getElementById("preview-img");
+  const extractBtn = document.getElementById("extract-btn");
+  const loading    = document.getElementById("loading");
+  const resultWrap = document.getElementById("result-wrap");
+
+  let selectedFile = null;
+
+  // ── file selection ──
+  dropZone.addEventListener("click", () => fileInput.click());
+  document.getElementById("change-btn").addEventListener("click", () => fileInput.click());
+
+  fileInput.addEventListener("change", () => {
+    if (fileInput.files[0]) setFile(fileInput.files[0]);
+  });
+
+  dropZone.addEventListener("dragover", e => { e.preventDefault(); dropZone.classList.add("drag-over"); });
+  dropZone.addEventListener("dragleave", () => dropZone.classList.remove("drag-over"));
+  dropZone.addEventListener("drop", e => {
+    e.preventDefault();
+    dropZone.classList.remove("drag-over");
+    if (e.dataTransfer.files[0]) setFile(e.dataTransfer.files[0]);
+  });
+
+  function setFile(file) {
+    selectedFile = file;
+    previewImg.src = URL.createObjectURL(file);
+    dropZone.style.display = "none";
+    previewWrap.style.display = "block";
+    extractBtn.disabled = false;
+    resultWrap.style.display = "none";
+  }
+
+  // ── extract ──
+  extractBtn.addEventListener("click", async () => {
+    if (!selectedFile) return;
+
+    extractBtn.disabled = true;
+    loading.style.display = "block";
+    resultWrap.style.display = "none";
+
+    try {
+      const form = new FormData();
+      form.append("image", selectedFile);
+      const resp = await fetch("/grocery/extract", { method: "POST", body: form });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      renderResult(data);
+    } catch (err) {
+      alert(`오류: ${err.message}`);
+    } finally {
+      loading.style.display = "none";
+      extractBtn.disabled = false;
+    }
+  });
+
+  // ── render ──
+  function fmt(n) {
+    if (n == null) return "—";
+    return Number(n).toLocaleString("ko-KR") + "원";
+  }
+
+  function renderResult({ result, issues, raw }) {
+    // issues
+    const issuesBox = document.getElementById("issues-box");
+    if (issues && issues.length) {
+      issuesBox.innerHTML = issues.map(i => `<p>${i}</p>`).join("");
+      issuesBox.style.display = "block";
+    } else {
+      issuesBox.innerHTML = "<p>✅ 검증 통과</p>";
+      issuesBox.style.display = "block";
+      issuesBox.style.background = "#f0fdf4";
+      issuesBox.style.borderColor = "#86efac";
+      issuesBox.style.color = "#166534";
+    }
+
+    document.getElementById("r-merchant").textContent = result.merchant || "—";
+    document.getElementById("r-date").textContent = result.purchase_date || "날짜 없음";
+
+    const refundBadge = document.getElementById("r-refund");
+    refundBadge.style.display = result.is_refund ? "inline" : "none";
+
+    const tbody = document.getElementById("r-items");
+    tbody.innerHTML = "";
+    (result.items || []).forEach(item => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${item.raw_name || "—"}</td>
+        <td class="qty">${item.qty ?? 1}</td>
+        <td class="amount">${fmt(item.amount)}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    document.getElementById("r-total").textContent = fmt(result.total);
+
+    // raw JSON
+    document.getElementById("raw-json").textContent = JSON.stringify(result, null, 2);
+
+    resultWrap.style.display = "block";
+    resultWrap.scrollIntoView({ behavior: "smooth" });
+  }
+
+  // ── raw toggle ──
+  document.getElementById("raw-toggle").addEventListener("click", function() {
+    const pre = document.getElementById("raw-json");
+    const open = pre.style.display === "block";
+    pre.style.display = open ? "none" : "block";
+    this.textContent = open ? "▶ JSON 원본 보기" : "▼ JSON 원본 닫기";
+  });
+</script>
+</body>
+</html>

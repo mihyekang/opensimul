@@ -17,6 +17,7 @@ from pydantic import BaseModel
 
 import db
 from azure_openai_client import ClientConfig
+from grocery_pass1 import extract_pass1_bytes, validate
 from repl import fetch_usd_to_krw
 from session_manager import SessionManager
 
@@ -253,6 +254,27 @@ async def analyze(
             "turn_cost_krw": turn_cost_usd * state.usd_to_krw,
         },
     }
+
+
+@app.get("/grocery", response_class=HTMLResponse)
+async def grocery_page():
+    with open("static/grocery.html", encoding="utf-8") as f:
+        return f.read()
+
+
+@app.post("/grocery/extract")
+async def grocery_extract(image: UploadFile = File(...)):
+    """Pass 1: 영수증 이미지 → JSON 추출 + 검증."""
+    content = await image.read()
+    mime_type = image.content_type or "image/jpeg"
+    config = ClientConfig()
+
+    loop = asyncio.get_event_loop()
+    result, raw = await loop.run_in_executor(
+        None, lambda: extract_pass1_bytes(content, mime_type, config)
+    )
+    issues = validate(result)
+    return {"result": result, "issues": issues, "raw": raw}
 
 
 @app.get("/analyses")

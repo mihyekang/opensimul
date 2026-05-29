@@ -56,14 +56,9 @@ Return exactly this JSON structure:
 
 # ── 추출 함수 ──────────────────────────────────────────────────────────────────
 
-def extract_pass1(image_path: str, config: ClientConfig) -> tuple[dict, str]:
-    """이미지에서 Pass 1 JSON 추출. (result_dict, raw_text) 반환."""
-    with open(image_path, "rb") as f:
-        b64 = base64.b64encode(f.read()).decode()
-
-    suffix = Path(image_path).suffix.lower()
-    mime = {"jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
-            ".webp": "image/webp", ".gif": "image/gif"}.get(suffix, "image/jpeg")
+def extract_pass1_bytes(image_bytes: bytes, mime_type: str, config: ClientConfig) -> tuple[dict, str]:
+    """bytes로 받은 이미지에서 Pass 1 JSON 추출. (result_dict, raw_text) 반환."""
+    b64 = base64.b64encode(image_bytes).decode()
 
     client = AzureOpenAI(
         azure_endpoint=config.endpoint,
@@ -77,24 +72,31 @@ def extract_pass1(image_path: str, config: ClientConfig) -> tuple[dict, str]:
         messages=[
             {"role": "system", "content": PASS1_SYSTEM},
             {"role": "user", "content": [
-                {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
+                {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{b64}"}},
                 {"type": "text", "text": PASS1_USER},
             ]},
         ],
         max_completion_tokens=4096,
-        temperature=0,       # 재현성 최대화
+        temperature=0,
     )
 
     raw = response.choices[0].message.content.strip()
-    # 마크다운 코드블록 제거 (모델이 가끔 붙임)
     if raw.startswith("```"):
         raw = raw.split("```")[1]
         if raw.startswith("json"):
             raw = raw[4:]
     raw = raw.strip()
 
-    result = json.loads(raw)
-    return result, raw
+    return json.loads(raw), raw
+
+
+def extract_pass1(image_path: str, config: ClientConfig) -> tuple[dict, str]:
+    """파일 경로로 Pass 1 추출 (CLI용)."""
+    suffix = Path(image_path).suffix.lower().lstrip(".")
+    mime = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
+            "webp": "image/webp", "gif": "image/gif"}.get(suffix, "image/jpeg")
+    with open(image_path, "rb") as f:
+        return extract_pass1_bytes(f.read(), mime, config)
 
 
 # ── 검증 ──────────────────────────────────────────────────────────────────────
