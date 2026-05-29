@@ -596,6 +596,8 @@
           badge.className = "save-badge";
           badge.innerHTML = `✅ 저장 완료 — 채팅으로 이동 중…`;
           saveBtn.replaceWith(badge);
+          // 채팅 페이지에서 바로 요약할 수 있도록 영수증 데이터 전달
+          sessionStorage.setItem("pendingReceipt", JSON.stringify(result));
           setTimeout(() => { window.location.href = "/?grocery_saved=1"; }, 1200);
         } else {
           saveBtn.textContent = `저장 실패: ${data.reason || "오류"}`;
