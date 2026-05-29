@@ -13,7 +13,7 @@ from datetime import date
 
 import fitz  # PyMuPDF
 
-from fastapi import FastAPI, File, Form, UploadFile, Body
+from fastapi import FastAPI, File, Form, UploadFile, Body, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -378,6 +378,18 @@ async def grocery_recent(days: int = 90, user_id: str = ""):
     loop = asyncio.get_event_loop()
     rows = await loop.run_in_executor(None, lambda: db.get_recent_groceries(days, user_id))
     return rows
+
+
+@app.get("/grocery/receipt/{receipt_id}")
+async def grocery_get_receipt(receipt_id: int, user_id: str = ""):
+    """영수증 상세 조회 (소유자만 가능)."""
+    if not state.db_enabled:
+        raise HTTPException(status_code=503, detail="db_not_enabled")
+    loop = asyncio.get_event_loop()
+    row = await loop.run_in_executor(None, lambda: db.get_grocery_receipt_detail(receipt_id, user_id))
+    if row is None:
+        raise HTTPException(status_code=404, detail="not_found")
+    return row
 
 
 @app.delete("/grocery/receipt/{receipt_id}")

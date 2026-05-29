@@ -266,6 +266,150 @@
     .rdc-del-btn:hover:not(:disabled) { background: #fecaca; }
     .rdc-del-btn:disabled { background: #f3f4f6; color: #ccc; border-color: #e5e7eb; cursor: default; }
 
+    /* ── receipt history overlay ── */
+    #history-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: #f5f6f8;
+      z-index: 500;
+      flex-direction: column;
+    }
+    #history-overlay.open { display: flex; }
+    .history-header {
+      background: #fff;
+      border-bottom: 1px solid #e0e0e0;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .history-title { flex: 1; font-size: 1rem; font-weight: 700; color: #111; }
+    .history-add-btn {
+      padding: 7px 12px;
+      background: #0078d4;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+    }
+    .history-add-btn:hover { background: #106ebe; }
+    .history-del-toggle {
+      padding: 7px 10px;
+      background: none;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      color: #555;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .history-del-toggle.active { background: #fee2e2; border-color: #fca5a5; color: #dc2626; }
+    .history-del-confirm {
+      display: none;
+      padding: 7px 12px;
+      background: #dc2626;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .history-del-confirm.visible { display: block; }
+    .history-close-btn {
+      background: none;
+      border: none;
+      font-size: 1.2rem;
+      cursor: pointer;
+      color: #666;
+      padding: 4px 8px;
+      border-radius: 6px;
+    }
+    .history-close-btn:hover { background: #f0f0f0; }
+    .history-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px 16px 32px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-width: 800px;
+      width: 100%;
+      align-self: center;
+    }
+    .history-empty { text-align: center; padding: 60px 20px; color: #aaa; font-size: 0.88rem; line-height: 1.8; }
+    .hrc {
+      background: #fff;
+      border: 1.5px solid #e5e7eb;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0,0,0,.06);
+      transition: border-color 0.15s;
+    }
+    .hrc.checked { border-color: #0078d4; background: #f0f7ff; }
+    .hrc-row {
+      display: flex;
+      align-items: center;
+      padding: 12px 14px;
+      gap: 10px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .hrc-row:hover { background: #fafafa; }
+    .hrc.checked .hrc-row { background: transparent; }
+    .hrc-check {
+      display: none;
+      width: 20px;
+      height: 20px;
+      border-radius: 6px;
+      border: 2px solid #ccc;
+      flex-shrink: 0;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.72rem;
+      color: transparent;
+      transition: all 0.15s;
+    }
+    .delete-mode .hrc-check { display: flex; }
+    .hrc.checked .hrc-check { background: #0078d4; border-color: #0078d4; color: #fff; }
+    .hrc-icon { font-size: 1.2rem; flex-shrink: 0; }
+    .hrc-body { flex: 1; min-width: 0; }
+    .hrc-merchant { font-size: 0.9rem; font-weight: 700; color: #111; }
+    .hrc-meta { font-size: 0.73rem; color: #888; margin-top: 2px; }
+    .hrc-amount { font-size: 0.88rem; font-weight: 700; color: #111; flex-shrink: 0; text-align: right; }
+    .hrc-expand { font-size: 0.7rem; color: #bbb; transition: transform 0.2s; flex-shrink: 0; margin-left: 2px; }
+    .hrc.expanded .hrc-expand { transform: rotate(180deg); }
+    .hrc-detail {
+      display: none;
+      border-top: 1px solid #f0f0f0;
+      padding: 10px 14px 14px;
+      background: #fafafa;
+    }
+    .hrc.expanded .hrc-detail { display: block; }
+    .hrc-items-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+    .hrc-items-table td { padding: 5px 4px; border-bottom: 1px solid #f0f0f0; color: #333; }
+    .hrc-items-table td:last-child { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .hrc-items-table tr.cancelled td { color: #bbb; text-decoration: line-through; }
+    .hrc-items-table tr.discount td { color: #dc2626; }
+    .hrc-total-row {
+      display: flex;
+      justify-content: space-between;
+      padding-top: 8px;
+      margin-top: 4px;
+      border-top: 1px solid #e5e7eb;
+      font-weight: 700;
+      font-size: 0.85rem;
+    }
+
     /* ── chat area ── */
     #chat-wrap {
       width: 100%;
@@ -521,6 +665,7 @@
 <div id="hamburger-menu">
   <div class="hmenu-user">👤 <span id="hmenu-user-code"></span></div>
   <a href="/grocery" class="hmenu-item">🧾 영수증 분석기</a>
+  <button id="history-btn" class="hmenu-item">📋 영수증 이력</button>
   <button id="memory-btn" class="hmenu-item">🧠 기억</button>
   <button id="reset-btn" class="hmenu-item">🔄 대화 초기화</button>
   <button id="usage-btn" class="hmenu-item">📊 사용량 확인</button>
@@ -562,6 +707,18 @@
   </div>
   <input type="file" id="file-input" accept="image/*" style="display:none" />
 </footer>
+
+<!-- receipt history overlay -->
+<div id="history-overlay">
+  <div class="history-header">
+    <span class="history-title">📋 영수증 이력</span>
+    <a href="/grocery" class="history-add-btn">＋ 추가</a>
+    <button id="history-del-toggle" class="history-del-toggle">🗑 삭제</button>
+    <button id="history-del-confirm" class="history-del-confirm">선택 삭제 (0)</button>
+    <button id="history-close-btn" class="history-close-btn" title="닫기">✕</button>
+  </div>
+  <div id="history-list" class="history-list"></div>
+</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
@@ -701,6 +858,12 @@
     e.stopPropagation();
     localStorage.removeItem("grocery_user_code");
     window.location.href = "/grocery";
+  });
+
+  document.getElementById("history-btn").addEventListener("click", e => {
+    e.stopPropagation();
+    closeAllPanels();
+    openHistoryPanel();
   });
 
   // 패널 내부 클릭은 전파 차단
@@ -1181,6 +1344,189 @@
     streaming = false;
     sendBtn.disabled = false;
     inputEl.focus();
+  }
+
+  // ── receipt history panel ──
+  let _historyDeleteMode = false;
+  let _historySelected   = new Set();
+
+  document.getElementById("history-close-btn").addEventListener("click", () => {
+    document.getElementById("history-overlay").classList.remove("open");
+  });
+
+  document.getElementById("history-del-toggle").addEventListener("click", () => {
+    _historyDeleteMode = !_historyDeleteMode;
+    _historySelected.clear();
+    const toggle  = document.getElementById("history-del-toggle");
+    const confirm = document.getElementById("history-del-confirm");
+    const list    = document.getElementById("history-list");
+    toggle.classList.toggle("active", _historyDeleteMode);
+    toggle.textContent = _historyDeleteMode ? "취소" : "🗑 삭제";
+    confirm.classList.remove("visible");
+    confirm.textContent = "선택 삭제 (0)";
+    list.classList.toggle("delete-mode", _historyDeleteMode);
+    list.querySelectorAll(".hrc").forEach(c => c.classList.remove("checked"));
+  });
+
+  document.getElementById("history-del-confirm").addEventListener("click", async () => {
+    if (_historySelected.size === 0) return;
+    if (!confirm(`${_historySelected.size}개 영수증을 삭제할까요?`)) return;
+    const ids = [..._historySelected];
+    for (const id of ids) {
+      try {
+        await fetch(`/grocery/receipt/${id}?user_id=${encodeURIComponent(USER_CODE)}`, { method: "DELETE" });
+      } catch {}
+    }
+    await openHistoryPanel();
+  });
+
+  async function openHistoryPanel() {
+    _historyDeleteMode = false;
+    _historySelected.clear();
+    const toggle  = document.getElementById("history-del-toggle");
+    const confirm = document.getElementById("history-del-confirm");
+    const list    = document.getElementById("history-list");
+    toggle.classList.remove("active");
+    toggle.textContent = "🗑 삭제";
+    confirm.classList.remove("visible");
+    confirm.textContent = "선택 삭제 (0)";
+    list.classList.remove("delete-mode");
+    document.getElementById("history-overlay").classList.add("open");
+    list.innerHTML = '<p class="history-empty">불러오는 중…</p>';
+    try {
+      const rows = await fetch(`/grocery/history?days=365&user_id=${encodeURIComponent(USER_CODE)}`).then(r => r.json());
+      list.innerHTML = "";
+      if (!rows || rows.length === 0) {
+        list.innerHTML = '<p class="history-empty">저장된 영수증이 없어요.<br>＋ 추가 버튼으로 영수증을 올려보세요 🧾</p>';
+        return;
+      }
+      rows.forEach(r => list.appendChild(_buildHistoryCard(r)));
+    } catch (err) {
+      list.innerHTML = `<p class="history-empty">오류: ${err.message}</p>`;
+    }
+  }
+
+  function _buildHistoryCard(r) {
+    const fmtAmt = n => n != null ? Math.abs(n).toLocaleString("ko-KR") + "원" : "—";
+
+    const card = document.createElement("div");
+    card.className = "hrc";
+    card.dataset.id = r.id;
+
+    const row = document.createElement("div");
+    row.className = "hrc-row";
+
+    const check = document.createElement("div");
+    check.className = "hrc-check";
+    check.textContent = "✓";
+
+    const icon = document.createElement("div");
+    icon.className = "hrc-icon";
+    icon.textContent = r.is_refund ? "↩" : "🧾";
+
+    const body = document.createElement("div");
+    body.className = "hrc-body";
+    const merchantDiv = document.createElement("div");
+    merchantDiv.className = "hrc-merchant";
+    merchantDiv.textContent = r.merchant || "알 수 없음";
+    const metaDiv = document.createElement("div");
+    metaDiv.className = "hrc-meta";
+    metaDiv.textContent = `${r.purchase_date || "날짜 미상"} · ${r.item_count ?? 0}개 품목`;
+    body.appendChild(merchantDiv);
+    body.appendChild(metaDiv);
+
+    const amountDiv = document.createElement("div");
+    amountDiv.className = "hrc-amount";
+    amountDiv.textContent = fmtAmt(r.total);
+
+    const arrow = document.createElement("div");
+    arrow.className = "hrc-expand";
+    arrow.textContent = "▼";
+
+    row.appendChild(check);
+    row.appendChild(icon);
+    row.appendChild(body);
+    row.appendChild(amountDiv);
+    row.appendChild(arrow);
+
+    const detail = document.createElement("div");
+    detail.className = "hrc-detail";
+
+    card.appendChild(row);
+    card.appendChild(detail);
+
+    row.addEventListener("click", () => {
+      if (_historyDeleteMode) {
+        const id = parseInt(card.dataset.id);
+        if (_historySelected.has(id)) {
+          _historySelected.delete(id);
+          card.classList.remove("checked");
+        } else {
+          _historySelected.add(id);
+          card.classList.add("checked");
+        }
+        const confirmBtn = document.getElementById("history-del-confirm");
+        confirmBtn.textContent = `선택 삭제 (${_historySelected.size})`;
+        confirmBtn.classList.toggle("visible", _historySelected.size > 0);
+      } else {
+        const isExpanded = card.classList.contains("expanded");
+        card.classList.toggle("expanded");
+        if (!isExpanded && !detail.dataset.loaded) {
+          _loadReceiptDetail(r.id, detail);
+        }
+      }
+    });
+
+    return card;
+  }
+
+  async function _loadReceiptDetail(receiptId, detailEl) {
+    detailEl.innerHTML = '<p style="font-size:0.8rem;color:#aaa;padding:4px 0">불러오는 중…</p>';
+    try {
+      const data = await fetch(
+        `/grocery/receipt/${receiptId}?user_id=${encodeURIComponent(USER_CODE)}`
+      ).then(r => r.json());
+      detailEl.innerHTML = "";
+      detailEl.dataset.loaded = "1";
+      _renderReceiptDetail(data, detailEl);
+    } catch (err) {
+      detailEl.innerHTML = `<p style="font-size:0.8rem;color:#dc2626">오류: ${err.message}</p>`;
+    }
+  }
+
+  function _renderReceiptDetail(data, el) {
+    const fmt = n => {
+      if (n == null) return "—";
+      const s = Math.abs(n).toLocaleString("ko-KR") + "원";
+      return n < 0 ? "−" + s : s;
+    };
+    const items = data.items || [];
+    const table = document.createElement("table");
+    table.className = "hrc-items-table";
+    items.forEach(item => {
+      const tr = document.createElement("tr");
+      if (item.is_cancelled) tr.className = "cancelled";
+      else if ((item.amount || 0) < 0) tr.className = "discount";
+      tr.innerHTML = `
+        <td>${item.raw_name || "—"}</td>
+        <td style="text-align:center;color:#bbb;width:28px">${(item.qty || 1) > 1 ? item.qty : ""}</td>
+        <td>${fmt(item.amount)}</td>
+      `;
+      table.appendChild(tr);
+    });
+    el.appendChild(table);
+    if (data.total != null) {
+      const totalRow = document.createElement("div");
+      totalRow.className = "hrc-total-row";
+      totalRow.innerHTML = `<span>합계</span><span>${fmt(data.total)}</span>`;
+      el.appendChild(totalRow);
+    }
+    if (data.created_at) {
+      const createdDiv = document.createElement("div");
+      createdDiv.style.cssText = "font-size:0.7rem;color:#bbb;margin-top:8px;text-align:right";
+      createdDiv.textContent = `저장: ${data.created_at.substring(0, 16).replace("T", " ")}`;
+      el.appendChild(createdDiv);
+    }
   }
 
   loadInfo();

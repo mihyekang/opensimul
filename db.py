@@ -254,6 +254,30 @@ def list_grocery_receipts(days: int = 30, user_id: str = "") -> list[dict]:
             return [dict(r) for r in cur.fetchall()]
 
 
+def get_grocery_receipt_detail(receipt_id: int, user_id: str) -> dict | None:
+    """영수증 상세 조회 (품목 포함). 소유자만 조회 가능."""
+    with _get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT id, merchant, purchase_date, total, is_refund, created_at, currency
+                FROM grocery_receipts WHERE id = %s AND user_id = %s
+            """, (receipt_id, user_id))
+            row = cur.fetchone()
+            if not row:
+                return None
+            result = dict(row)
+            if result.get("purchase_date"):
+                result["purchase_date"] = result["purchase_date"].isoformat()
+            if result.get("created_at"):
+                result["created_at"] = result["created_at"].isoformat()
+            cur.execute("""
+                SELECT raw_name, qty, unit_price, amount, is_cancelled
+                FROM grocery_items WHERE receipt_id = %s ORDER BY id
+            """, (receipt_id,))
+            result["items"] = [dict(r) for r in cur.fetchall()]
+        return result
+
+
 def delete_grocery_receipt(receipt_id: int, user_id: str) -> bool:
     """영수증 삭제. user_id 소유자만 삭제 가능. True if deleted."""
     with _get_conn() as conn:
