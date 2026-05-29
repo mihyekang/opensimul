@@ -30,38 +30,58 @@ Strict rules:
 1. Extract text EXACTLY as printed. No translation, interpretation, or classification.
 2. Numbers: digits only. Strip commas and currency symbols. "12,900원" → 12900
 3. Unreadable or missing field → null. Never guess or infer.
-4. purchase_date → YYYY-MM-DD. Partial dates: fill what is visible, null the rest.
-5. merchant → scan the ENTIRE receipt (header, footer, watermark, stamp, business number area).
-   Korean store brand heuristics — map ANY matching text to the canonical name:
-   • "E-MART" or "이마트" or "EMART" or "트레이더스" → "이마트" (append branch "○○점" if visible)
-   • "LOTTE MART" or "롯데마트" → "롯데마트"
-   • "HOMEPLUS" or "홈플러스" → "홈플러스"
-   • "GS THE FRESH" or "GS슈퍼마켓" → "GS더프레시"
-   • "COSTCO" or "코스트코" → "코스트코"
-   • "GS25", "CU", "세븐일레븐", "미니스톱", "이마트24" → use as-is
-   • Online: "쿠팡", "네이버쇼핑", "마켓컬리", "오아시스" → use as-is
-   If no brand found after scanning whole image → null.
-6. raw_name → copy item name character-by-character as it appears.
-7. qty → integer. If not shown, use 1.
-8. unit_price → null if not printed separately.
-9. Discounts: extract EVERY discount/coupon line as a SEPARATE item with a NEGATIVE amount.
-   raw_name: copy the discount label exactly (e.g. "회원할인", "즉시할인", "쿠폰할인", "행사할인").
-   amount: negative integer (e.g. -2000). qty: 1. unit_price: null.
-   Do NOT subtract the discount from the item above it — keep original item prices as printed.
-10. If sum(items.amount) ≠ total: add "needs_review": true at root level.
-11. is_refund → true only if the receipt is clearly a refund or cancellation.
-12. Return ONLY the JSON object. No markdown fences, no explanation."""
+4. purchase_date → YYYY-MM-DD.
+   • "2026. 5. 26" or "2026.05.28" → "2026-05-28"
+   • "5.25. 22:39 주문" or "5/26(화)" → use the most plausible year from context → "2026-05-25"
+   • Order history screens with multiple dates: use the most recent date.
+   • Partial or unreadable date → null.
+5. merchant → scan the ENTIRE image (header, footer, watermark, stamp, badge, nav bar).
+   Korean store heuristics — map ANY matching signal to canonical name:
+   ── 오프라인 대형마트 ──
+   • "E-MART" / "이마트" / "EMART" / "트레이더스" → "이마트" (include branch "○○점" if visible)
+   • "피코크" brand item present → "이마트"
+   • "(*)면세물품" AND "과세물품" AND "부가세" lines all present → "이마트"
+   • Item lines formatted as "NN" or "NN*" (two-digit number + optional asterisk) followed by
+     a 13-digit barcode on the next line → "이마트"
+   • "결제대상금액" label → "이마트"
+   • "LOTTE MART" / "롯데마트" → "롯데마트"
+   • "HOMEPLUS" / "홈플러스" → "홈플러스"
+   • "COSTCO" / "코스트코" → "코스트코"
+   • "GS THE FRESH" / "GS슈퍼마켓" → "GS더프레시"
+   ── 편의점 ──
+   • "GS25" / "CU" / "세븐일레븐" / "미니스톱" / "이마트24" → use as-is
+   ── 온라인 ──
+   • "로켓" / "판매자로켓" / "로켓배송" / "로켓프레시" badge visible → "쿠팡"
+   • "N pay" / "Npay+" / "N pay 내역" / "네이버페이" visible → "네이버쇼핑"
+   • "마켓컬리" → "마켓컬리"
+   • "오아시스" → "오아시스"
+   If no signal found → null.
+6. raw_name → copy item name character-by-character.
+   For app order history screens: product name only (strip "옵션:", "[무료배송]", status labels, etc.)
+7. qty → integer. Default 1 if not shown.
+8. unit_price → null if not separately printed.
+9. Discounts: every discount / coupon / event-price line → SEPARATE item, NEGATIVE amount.
+   raw_name: exact label (e.g. "피코크 행사", "회원할인", "즉시할인", "쿠폰할인").
+   amount: negative integer (e.g. -440). Never modify the original item price.
+10. Cancelled items: if an item shows "주문취소" / "취소" status, add "is_cancelled": true on that item.
+    Still extract the name and amount. Do NOT include cancelled amounts in the total check.
+11. total → prefer "결제대상금액" if present (이마트). Otherwise "합계" / "총결제금액" / "주문금액".
+    For order history screens: sum of non-cancelled, non-discount items.
+12. If sum(active items) ≠ total: add "needs_review": true.
+13. is_refund → true only when the whole receipt/order is a refund or cancellation.
+14. Return ONLY the JSON object. No markdown fences, no explanation."""
 
 PASS1_USER = """Extract all purchase data from this receipt image.
 
-Return exactly this JSON structure (discounts have negative amount):
+Return exactly this JSON structure:
 {
   "merchant": "string or null",
   "purchase_date": "YYYY-MM-DD or null",
   "currency": "KRW",
   "items": [
-    {"raw_name": "string", "qty": 1, "unit_price": null, "amount": 9900},
-    {"raw_name": "회원할인", "qty": 1, "unit_price": null, "amount": -1000}
+    {"raw_name": "상품명", "qty": 1, "unit_price": null, "amount": 9900, "is_cancelled": false},
+    {"raw_name": "피코크 행사", "qty": 1, "unit_price": null, "amount": -440, "is_cancelled": false},
+    {"raw_name": "취소된상품", "qty": 1, "unit_price": null, "amount": 5000, "is_cancelled": true}
   ],
   "total": 0,
   "is_refund": false
@@ -128,9 +148,10 @@ def validate(result: dict) -> list[str]:
     if not items:
         issues.append("🔴 items: 비어있음")
     else:
-        null_count = sum(1 for i in items if i.get("amount") is None)
-        zero_names = [i["raw_name"] for i in items if i.get("amount") == 0]
-        discount_items = [i for i in items if (i.get("amount") or 0) < 0]
+        null_count = sum(1 for i in items if i.get("amount") is None and not i.get("is_cancelled"))
+        zero_names = [i["raw_name"] for i in items if i.get("amount") == 0 and not i.get("is_cancelled")]
+        discount_items = [i for i in items if (i.get("amount") or 0) < 0 and not i.get("is_cancelled")]
+        cancelled_items = [i for i in items if i.get("is_cancelled")]
         if null_count:
             issues.append(f"ℹ  {null_count}개 항목 금액 미인식 (합산 제외)")
         if zero_names:
@@ -138,11 +159,13 @@ def validate(result: dict) -> list[str]:
         if discount_items:
             discount_total = sum(i["amount"] for i in discount_items)
             issues.append(f"ℹ  할인 {len(discount_items)}건 포함 ({discount_total:,}원)")
+        if cancelled_items:
+            issues.append(f"ℹ  주문취소 {len(cancelled_items)}건 (합산 제외)")
 
     total = result.get("total", 0) or 0
-    recognized_items = [i for i in items if i.get("amount") is not None]
-    items_sum = sum(i["amount"] for i in recognized_items)
-    if recognized_items and total and abs(items_sum - total) > 1:
+    active_items = [i for i in items if i.get("amount") is not None and not i.get("is_cancelled")]
+    items_sum = sum(i["amount"] for i in active_items)
+    if active_items and total and abs(items_sum - total) > 1:
         issues.append(f"⚠  합계 불일치: items합={items_sum:,} total={total:,} (차이 {items_sum-total:+,})")
 
     if result.get("needs_review"):

@@ -222,6 +222,14 @@
     .items-table tr.unrecognized td { color: #bbb; }
     .items-table tr.discount td { color: #dc2626; }
     .items-table tr.discount td.amount { font-weight: 600; }
+    .items-table tr.cancelled td { color: #bbb; text-decoration: line-through; }
+    .items-table tr.cancelled td:first-child::after {
+      content: " (취소)";
+      font-size: 0.7rem;
+      text-decoration: none;
+      display: inline-block;
+      color: #ef4444;
+    }
 
     .total-row {
       display: flex;
@@ -509,13 +517,15 @@
     tbody.removeAttribute("id");
     (result.items || []).forEach(item => {
       const tr = document.createElement("tr");
-      const isDiscount = item.amount != null && item.amount < 0;
-      const isUnrecognized = item.amount == null;
-      if (isDiscount) tr.className = "discount";
+      const isCancelled = !!item.is_cancelled;
+      const isDiscount = !isCancelled && item.amount != null && item.amount < 0;
+      const isUnrecognized = !isCancelled && item.amount == null;
+      if (isCancelled) tr.className = "cancelled";
+      else if (isDiscount) tr.className = "discount";
       else if (isUnrecognized) tr.className = "unrecognized";
       tr.innerHTML = `
         <td>${isDiscount ? "↳ " : ""}${escHtml(item.raw_name || "—")}</td>
-        <td class="qty">${isDiscount ? "" : (item.qty ?? 1)}</td>
+        <td class="qty">${(isDiscount || isCancelled) ? "" : (item.qty ?? 1)}</td>
         <td class="amount">${fmt(item.amount)}</td>
       `;
       tbody.appendChild(tr);
@@ -523,16 +533,19 @@
 
     // fill total (only recognized items)
     const allItems = result.items || [];
-    const recognized = allItems.filter(i => i.amount != null);
-    const recognizedSum = recognized.reduce((s, i) => s + i.amount, 0);
-    const hasUnrecognized = recognized.length < allItems.length;
-    const hasDiscount = recognized.some(i => i.amount < 0);
+    const activeItems = allItems.filter(i => i.amount != null && !i.is_cancelled);
+    const activeSum = activeItems.reduce((s, i) => s + i.amount, 0);
+    const hasCancelled = allItems.some(i => i.is_cancelled);
+    const hasUnrecognized = allItems.some(i => i.amount == null && !i.is_cancelled);
+    const hasDiscount = activeItems.some(i => i.amount < 0);
     const totalEl = card.querySelector("#total-placeholder");
     totalEl.removeAttribute("id");
     let subNote = "";
-    if (hasUnrecognized) subNote = "(인식된 항목만)";
+    if (hasCancelled && hasUnrecognized) subNote = "(취소·미인식 제외)";
+    else if (hasCancelled) subNote = "(취소 제외)";
+    else if (hasUnrecognized) subNote = "(인식된 항목만)";
     else if (hasDiscount) subNote = "(할인 포함)";
-    totalEl.innerHTML = fmt(recognizedSum) +
+    totalEl.innerHTML = fmt(activeSum) +
       (subNote ? `<span class="total-sub">${subNote}</span>` : "");
 
     // raw JSON toggle
