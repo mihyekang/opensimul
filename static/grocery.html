@@ -51,33 +51,61 @@
     #drop-zone strong { color: #0078d4; }
     #file-input { display: none; }
 
-    /* ── preview ── */
-    #preview-wrap {
+    /* ── thumbnail strip ── */
+    #thumb-strip {
       display: none;
       width: 100%;
       max-width: 480px;
-      margin-bottom: 20px;
+      margin-bottom: 12px;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .thumb-item {
       position: relative;
-    }
-    #preview-img {
-      width: 100%;
-      border-radius: 10px;
-      border: 1px solid #e0e0e0;
-      max-height: 320px;
-      object-fit: contain;
+      width: 88px;
+      height: 88px;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 2px solid #e0e0e0;
       background: #fff;
+      flex-shrink: 0;
     }
-    #change-btn {
+    .thumb-item img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .thumb-item .thumb-remove {
       position: absolute;
-      top: 8px; right: 8px;
-      background: rgba(0,0,0,.5);
+      top: 3px; right: 3px;
+      width: 18px; height: 18px;
+      background: rgba(0,0,0,.55);
       color: #fff;
       border: none;
-      border-radius: 6px;
-      padding: 4px 10px;
-      font-size: 0.72rem;
+      border-radius: 50%;
+      font-size: 0.65rem;
       cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      line-height: 1;
     }
+    .thumb-item.processing { border-color: #0078d4; }
+    .thumb-item.done { border-color: #22c55e; }
+    .thumb-item.error { border-color: #ef4444; }
+
+    /* add-more button inside strip */
+    #add-more-btn {
+      width: 88px;
+      height: 88px;
+      border-radius: 8px;
+      border: 2px dashed #c8cdd5;
+      background: #f8f9fa;
+      color: #888;
+      font-size: 1.6rem;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    #add-more-btn:hover { border-color: #0078d4; color: #0078d4; }
 
     /* ── extract button ── */
     #extract-btn {
@@ -97,30 +125,60 @@
     #extract-btn:hover:not(:disabled) { background: #106ebe; }
     #extract-btn:disabled { background: #b0c8e8; cursor: not-allowed; }
 
-    /* ── loading ── */
-    #loading {
+    /* ── progress ── */
+    #progress-wrap {
       display: none;
-      font-size: 0.85rem;
-      color: #555;
+      width: 100%;
+      max-width: 480px;
       margin-bottom: 16px;
+    }
+    .progress-bar-bg {
+      height: 6px;
+      background: #e5e7eb;
+      border-radius: 3px;
+      overflow: hidden;
+      margin-bottom: 6px;
+    }
+    #progress-bar {
+      height: 100%;
+      background: #0078d4;
+      border-radius: 3px;
+      transition: width 0.3s;
+      width: 0%;
+    }
+    #progress-text {
+      font-size: 0.78rem;
+      color: #555;
+      display: flex;
+      align-items: center;
+      gap: 6px;
     }
     .spinner {
       display: inline-block;
-      width: 16px; height: 16px;
+      width: 14px; height: 14px;
       border: 2px solid #ccc;
       border-top-color: #0078d4;
       border-radius: 50%;
       animation: spin 0.7s linear infinite;
-      vertical-align: middle;
-      margin-right: 6px;
+      flex-shrink: 0;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* ── result card ── */
+    /* ── result cards ── */
     #result-wrap {
       display: none;
       width: 100%;
       max-width: 480px;
+    }
+
+    .result-section {
+      margin-bottom: 28px;
+    }
+    .result-file-label {
+      font-size: 0.75rem;
+      color: #888;
+      margin-bottom: 6px;
+      padding-left: 2px;
     }
 
     .card {
@@ -139,6 +197,7 @@
     }
     .merchant { font-size: 1rem; font-weight: 700; color: #111; }
     .date     { font-size: 0.78rem; color: #888; }
+    .date.inferred { color: #aaa; font-style: italic; }
 
     .items-table {
       width: 100%;
@@ -160,6 +219,7 @@
     }
     .items-table td.amount { text-align: right; font-variant-numeric: tabular-nums; }
     .items-table td.qty { text-align: center; color: #888; }
+    .items-table tr.unrecognized td { color: #bbb; }
 
     .total-row {
       display: flex;
@@ -168,6 +228,12 @@
       border-top: 1px solid #e5e7eb;
       font-weight: 700;
       font-size: 0.92rem;
+    }
+    .total-sub {
+      font-size: 0.72rem;
+      font-weight: 400;
+      color: #aaa;
+      margin-left: 6px;
     }
 
     /* issues */
@@ -181,6 +247,11 @@
       margin-bottom: 12px;
     }
     .issues p { margin: 2px 0; }
+    .issues.pass {
+      background: #f0fdf4;
+      border-color: #86efac;
+      color: #166534;
+    }
 
     /* refund badge */
     .badge-refund {
@@ -202,7 +273,7 @@
       padding: 0;
       margin-bottom: 6px;
     }
-    #raw-json {
+    .raw-json {
       display: none;
       background: #f6f8fa;
       border: 1px solid #e0e0e0;
@@ -226,68 +297,38 @@
 <div id="drop-zone">
   <div class="icon">🧾</div>
   <p><strong>클릭</strong>하거나 이미지를 여기로 드래그하세요<br>
-  이마트 · 쿠팡 · 네이버 영수증 모두 가능</p>
-  <input type="file" id="file-input" accept="image/*" />
+  여러 장 동시 선택 가능 · 이마트 · 쿠팡 · 네이버 영수증</p>
+  <input type="file" id="file-input" accept="image/*" multiple />
 </div>
 
-<div id="preview-wrap">
-  <img id="preview-img" src="" alt="preview" />
-  <button id="change-btn">변경</button>
-</div>
+<div id="thumb-strip"></div>
 
 <button id="extract-btn" disabled>추출하기</button>
-<div id="loading"><span class="spinner"></span>추출 중…</div>
 
-<div id="result-wrap">
-  <div id="issues-box" class="issues" style="display:none"></div>
-
-  <div class="card">
-    <div class="card-header">
-      <span class="merchant" id="r-merchant">—</span>
-      <span>
-        <span id="r-refund" class="badge-refund" style="display:none">환불</span>
-        <span class="date" id="r-date">—</span>
-      </span>
-    </div>
-
-    <table class="items-table">
-      <thead>
-        <tr>
-          <th>품목 (raw)</th>
-          <th class="qty">수량</th>
-          <th style="text-align:right">금액</th>
-        </tr>
-      </thead>
-      <tbody id="r-items"></tbody>
-    </table>
-
-    <div class="total-row">
-      <span>합계</span>
-      <span id="r-total">—</span>
-    </div>
-  </div>
-
-  <button class="raw-toggle" id="raw-toggle">▶ JSON 원본 보기</button>
-  <pre id="raw-json"></pre>
+<div id="progress-wrap">
+  <div class="progress-bar-bg"><div id="progress-bar"></div></div>
+  <div id="progress-text"><span class="spinner"></span><span id="progress-label">처리 중…</span></div>
 </div>
 
-<script>
-  const dropZone   = document.getElementById("drop-zone");
-  const fileInput  = document.getElementById("file-input");
-  const previewWrap= document.getElementById("preview-wrap");
-  const previewImg = document.getElementById("preview-img");
-  const extractBtn = document.getElementById("extract-btn");
-  const loading    = document.getElementById("loading");
-  const resultWrap = document.getElementById("result-wrap");
+<div id="result-wrap"></div>
 
-  let selectedFile = null;
+<script>
+  const dropZone    = document.getElementById("drop-zone");
+  const fileInput   = document.getElementById("file-input");
+  const thumbStrip  = document.getElementById("thumb-strip");
+  const extractBtn  = document.getElementById("extract-btn");
+  const progressWrap= document.getElementById("progress-wrap");
+  const progressBar = document.getElementById("progress-bar");
+  const progressLabel = document.getElementById("progress-label");
+  const resultWrap  = document.getElementById("result-wrap");
+
+  let selectedFiles = []; // File objects
 
   // ── file selection ──
   dropZone.addEventListener("click", () => fileInput.click());
-  document.getElementById("change-btn").addEventListener("click", () => fileInput.click());
-
   fileInput.addEventListener("change", () => {
-    if (fileInput.files[0]) setFile(fileInput.files[0]);
+    addFiles(Array.from(fileInput.files));
+    fileInput.value = "";
   });
 
   dropZone.addEventListener("dragover", e => { e.preventDefault(); dropZone.classList.add("drag-over"); });
@@ -295,95 +336,211 @@
   dropZone.addEventListener("drop", e => {
     e.preventDefault();
     dropZone.classList.remove("drag-over");
-    if (e.dataTransfer.files[0]) setFile(e.dataTransfer.files[0]);
+    addFiles(Array.from(e.dataTransfer.files).filter(f => f.type.startsWith("image/")));
   });
 
-  function setFile(file) {
-    selectedFile = file;
-    previewImg.src = URL.createObjectURL(file);
+  function addFiles(files) {
+    files.forEach(f => {
+      if (!selectedFiles.find(x => x.name === f.name && x.size === f.size)) {
+        selectedFiles.push(f);
+      }
+    });
+    renderThumbs();
+  }
+
+  function renderThumbs() {
+    if (!selectedFiles.length) {
+      thumbStrip.style.display = "none";
+      dropZone.style.display = "block";
+      extractBtn.disabled = true;
+      return;
+    }
+
     dropZone.style.display = "none";
-    previewWrap.style.display = "block";
+    thumbStrip.style.display = "flex";
+    thumbStrip.innerHTML = "";
+
+    selectedFiles.forEach((file, idx) => {
+      const wrap = document.createElement("div");
+      wrap.className = "thumb-item";
+      wrap.dataset.idx = idx;
+
+      const img = document.createElement("img");
+      img.src = URL.createObjectURL(file);
+
+      const rm = document.createElement("button");
+      rm.className = "thumb-remove";
+      rm.textContent = "✕";
+      rm.addEventListener("click", () => {
+        selectedFiles.splice(idx, 1);
+        renderThumbs();
+      });
+
+      wrap.appendChild(img);
+      wrap.appendChild(rm);
+      thumbStrip.appendChild(wrap);
+    });
+
+    // add-more button
+    const addBtn = document.createElement("button");
+    addBtn.id = "add-more-btn";
+    addBtn.textContent = "+";
+    addBtn.addEventListener("click", () => fileInput.click());
+    thumbStrip.appendChild(addBtn);
+
     extractBtn.disabled = false;
-    resultWrap.style.display = "none";
   }
 
   // ── extract ──
   extractBtn.addEventListener("click", async () => {
-    if (!selectedFile) return;
+    if (!selectedFiles.length) return;
 
     extractBtn.disabled = true;
-    loading.style.display = "block";
+    progressWrap.style.display = "block";
     resultWrap.style.display = "none";
+    resultWrap.innerHTML = "";
 
-    try {
-      const form = new FormData();
-      form.append("image", selectedFile);
-      const resp = await fetch("/grocery/extract", { method: "POST", body: form });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const data = await resp.json();
-      renderResult(data);
-    } catch (err) {
-      alert(`오류: ${err.message}`);
-    } finally {
-      loading.style.display = "none";
-      extractBtn.disabled = false;
+    const total = selectedFiles.length;
+    const thumbItems = thumbStrip.querySelectorAll(".thumb-item");
+
+    for (let i = 0; i < total; i++) {
+      const file = selectedFiles[i];
+      const pct = Math.round((i / total) * 100);
+      progressBar.style.width = pct + "%";
+      progressLabel.textContent = `${i + 1} / ${total} 처리 중… (${file.name})`;
+
+      if (thumbItems[i]) thumbItems[i].classList.add("processing");
+
+      try {
+        const form = new FormData();
+        form.append("image", file);
+        const resp = await fetch("/grocery/extract", { method: "POST", body: form });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+
+        const section = buildResultSection(file.name, data);
+        resultWrap.appendChild(section);
+        if (thumbItems[i]) { thumbItems[i].classList.remove("processing"); thumbItems[i].classList.add("done"); }
+      } catch (err) {
+        const errDiv = document.createElement("div");
+        errDiv.className = "result-section";
+        errDiv.innerHTML = `<p class="result-file-label">${escHtml(file.name)}</p><div class="issues"><p>🔴 오류: ${escHtml(err.message)}</p></div>`;
+        resultWrap.appendChild(errDiv);
+        if (thumbItems[i]) { thumbItems[i].classList.remove("processing"); thumbItems[i].classList.add("error"); }
+      }
     }
+
+    progressBar.style.width = "100%";
+    progressLabel.textContent = `완료 (${total}장)`;
+
+    resultWrap.style.display = "block";
+    resultWrap.scrollIntoView({ behavior: "smooth" });
+    extractBtn.disabled = false;
   });
 
-  // ── render ──
+  // ── helpers ──
+  function escHtml(s) {
+    return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  }
+
   function fmt(n) {
     if (n == null) return "—";
     return Number(n).toLocaleString("ko-KR") + "원";
   }
 
-  function renderResult({ result, issues, raw }) {
-    // issues
-    const issuesBox = document.getElementById("issues-box");
+  function buildResultSection(filename, { result, issues }) {
+    const section = document.createElement("div");
+    section.className = "result-section";
+
+    // file label
+    const label = document.createElement("p");
+    label.className = "result-file-label";
+    label.textContent = filename;
+    section.appendChild(label);
+
+    // issues box
+    const issuesBox = document.createElement("div");
+    issuesBox.className = "issues";
     if (issues && issues.length) {
-      issuesBox.innerHTML = issues.map(i => `<p>${i}</p>`).join("");
-      issuesBox.style.display = "block";
+      issuesBox.innerHTML = issues.map(i => `<p>${escHtml(i)}</p>`).join("");
     } else {
       issuesBox.innerHTML = "<p>✅ 검증 통과</p>";
-      issuesBox.style.display = "block";
-      issuesBox.style.background = "#f0fdf4";
-      issuesBox.style.borderColor = "#86efac";
-      issuesBox.style.color = "#166534";
+      issuesBox.classList.add("pass");
     }
+    section.appendChild(issuesBox);
 
-    document.getElementById("r-merchant").textContent = result.merchant || "—";
-    document.getElementById("r-date").textContent = result.purchase_date || "날짜 없음";
+    // card
+    const card = document.createElement("div");
+    card.className = "card";
 
-    const refundBadge = document.getElementById("r-refund");
-    refundBadge.style.display = result.is_refund ? "inline" : "none";
+    const dateText = result.purchase_date || "날짜 없음";
+    const dateClass = result._date_inferred ? "date inferred" : "date";
+    const dateTitle = result._date_inferred ? ' title="영수증에 날짜 없음 — 오늘 날짜 사용"' : '';
 
-    const tbody = document.getElementById("r-items");
-    tbody.innerHTML = "";
+    card.innerHTML = `
+      <div class="card-header">
+        <span class="merchant">${escHtml(result.merchant || "—")}</span>
+        <span>
+          ${result.is_refund ? '<span class="badge-refund">환불</span>' : ''}
+          <span class="${dateClass}"${dateTitle}>${escHtml(dateText)}${result._date_inferred ? ' *' : ''}</span>
+        </span>
+      </div>
+      <table class="items-table">
+        <thead><tr>
+          <th>품목 (raw)</th>
+          <th class="qty">수량</th>
+          <th style="text-align:right">금액</th>
+        </tr></thead>
+        <tbody id="tbody-placeholder"></tbody>
+      </table>
+      <div class="total-row">
+        <span>합계</span>
+        <span id="total-placeholder"></span>
+      </div>
+    `;
+    section.appendChild(card);
+
+    // fill items
+    const tbody = card.querySelector("#tbody-placeholder");
+    tbody.removeAttribute("id");
     (result.items || []).forEach(item => {
       const tr = document.createElement("tr");
+      const hasAmount = item.amount != null;
+      if (!hasAmount) tr.className = "unrecognized";
       tr.innerHTML = `
-        <td>${item.raw_name || "—"}</td>
+        <td>${escHtml(item.raw_name || "—")}</td>
         <td class="qty">${item.qty ?? 1}</td>
         <td class="amount">${fmt(item.amount)}</td>
       `;
       tbody.appendChild(tr);
     });
 
-    document.getElementById("r-total").textContent = fmt(result.total);
+    // fill total (only recognized items)
+    const recognized = (result.items || []).filter(i => i.amount != null);
+    const recognizedSum = recognized.reduce((s, i) => s + (i.amount || 0), 0);
+    const totalEl = card.querySelector("#total-placeholder");
+    totalEl.removeAttribute("id");
+    const allRecognized = recognized.length === (result.items || []).length;
+    totalEl.innerHTML = fmt(recognizedSum) +
+      (!allRecognized ? `<span class="total-sub">(인식된 항목만)</span>` : "");
 
-    // raw JSON
-    document.getElementById("raw-json").textContent = JSON.stringify(result, null, 2);
+    // raw JSON toggle
+    const toggle = document.createElement("button");
+    toggle.className = "raw-toggle";
+    toggle.textContent = "▶ JSON 원본 보기";
+    const pre = document.createElement("pre");
+    pre.className = "raw-json";
+    pre.textContent = JSON.stringify(result, null, 2);
+    toggle.addEventListener("click", () => {
+      const open = pre.style.display === "block";
+      pre.style.display = open ? "none" : "block";
+      toggle.textContent = open ? "▶ JSON 원본 보기" : "▼ JSON 원본 닫기";
+    });
+    section.appendChild(toggle);
+    section.appendChild(pre);
 
-    resultWrap.style.display = "block";
-    resultWrap.scrollIntoView({ behavior: "smooth" });
+    return section;
   }
-
-  // ── raw toggle ──
-  document.getElementById("raw-toggle").addEventListener("click", function() {
-    const pre = document.getElementById("raw-json");
-    const open = pre.style.display === "block";
-    pre.style.display = open ? "none" : "block";
-    this.textContent = open ? "▶ JSON 원본 보기" : "▼ JSON 원본 닫기";
-  });
 </script>
 </body>
 </html>

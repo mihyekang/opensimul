@@ -9,6 +9,7 @@ import json
 import logging
 import os
 from contextlib import asynccontextmanager
+from datetime import date
 
 from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import HTMLResponse, StreamingResponse
@@ -273,6 +274,9 @@ async def grocery_extract(image: UploadFile = File(...)):
     result, raw = await loop.run_in_executor(
         None, lambda: extract_pass1_bytes(content, mime_type, config)
     )
+    if not result.get("purchase_date"):
+        result["purchase_date"] = date.today().isoformat()
+        result["_date_inferred"] = True
     issues = validate(result)
     return {"result": result, "issues": issues, "raw": raw}
 

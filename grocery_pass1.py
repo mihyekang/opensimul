@@ -105,20 +105,26 @@ def validate(result: dict) -> list[str]:
     issues = []
     if not result.get("merchant"):
         issues.append("⚠  merchant: null")
-    if not result.get("purchase_date"):
+    if result.get("_date_inferred"):
+        issues.append("ℹ  purchase_date: 영수증에 날짜 없음 → 오늘 날짜로 대체")
+    elif not result.get("purchase_date"):
         issues.append("⚠  purchase_date: null")
 
     items = result.get("items", [])
     if not items:
         issues.append("🔴 items: 비어있음")
     else:
-        null_amounts = [i["raw_name"] for i in items if i.get("amount") in (None, 0)]
-        if null_amounts:
-            issues.append(f"⚠  amount=0/null 항목: {null_amounts}")
+        null_count = sum(1 for i in items if i.get("amount") in (None,))
+        zero_names = [i["raw_name"] for i in items if i.get("amount") == 0]
+        if null_count:
+            issues.append(f"ℹ  {null_count}개 항목 금액 미인식 (합산 제외)")
+        if zero_names:
+            issues.append(f"⚠  amount=0 항목: {zero_names}")
 
     total = result.get("total", 0) or 0
-    items_sum = sum(i.get("amount") or 0 for i in items)
-    if items and total and abs(items_sum - total) > 1:
+    recognized_items = [i for i in items if i.get("amount") not in (None,)]
+    items_sum = sum(i.get("amount") or 0 for i in recognized_items)
+    if recognized_items and total and abs(items_sum - total) > 1:
         issues.append(f"⚠  합계 불일치: items합={items_sum:,} total={total:,} (차이 {items_sum-total:+,})")
 
     if result.get("needs_review"):
