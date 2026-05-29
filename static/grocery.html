@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>영수증 추출 테스트</title>
+  <title>영수증 가져오기</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -405,18 +405,27 @@
       min-height: 1.2em;
     }
     .auth-hint { font-size: 0.75rem; color: #aaa; text-align: center; margin-top: 14px; }
-    /* user bar */
-    #user-bar {
-      display: none;
+    /* top nav bar */
+    .grocery-topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
       width: 100%;
       max-width: 480px;
-      justify-content: flex-end;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 8px;
+      margin-bottom: 16px;
     }
+    .topbar-chat-link {
+      font-size: 0.85rem;
+      color: #0078d4;
+      text-decoration: none;
+      font-weight: 500;
+      padding: 4px 0;
+    }
+    .topbar-chat-link:hover { text-decoration: underline; }
+    .topbar-right { display: flex; align-items: center; gap: 8px; }
     #user-bar-code { font-size: 0.8rem; color: #666; }
     #logout-btn {
+      display: none;
       font-size: 0.75rem;
       background: none;
       border: 1px solid #ddd;
@@ -456,12 +465,15 @@
 </head>
 <body>
 
-<h1>영수증 추출 테스트 — Pass 1</h1>
-<p class="subtitle">이미지 업로드 → 품목 추출 → 검증 결과 확인</p>
-<div id="user-bar">
-  <span id="user-bar-code"></span>
-  <button id="logout-btn">로그아웃</button>
+<div class="grocery-topbar">
+  <a href="/chat" class="topbar-chat-link">← 채팅창</a>
+  <div class="topbar-right">
+    <span id="user-bar-code"></span>
+    <button id="logout-btn">로그아웃</button>
+  </div>
 </div>
+<h1>영수증 가져오기</h1>
+<p class="subtitle">이미지 업로드 → 품목 추출 → 검증 결과 확인</p>
 
 <div id="drop-zone">
   <div class="icon">🧾</div>
@@ -520,12 +532,12 @@
   function hideAuth() { document.getElementById("auth-overlay").classList.remove("visible"); }
 
   function updateUserBar() {
-    const bar = document.getElementById("user-bar");
     if (USER_ID) {
       document.getElementById("user-bar-code").textContent = `👤 ${USER_ID}`;
-      bar.style.display = "flex";
+      document.getElementById("logout-btn").style.display = "inline-block";
     } else {
-      bar.style.display = "none";
+      document.getElementById("user-bar-code").textContent = "";
+      document.getElementById("logout-btn").style.display = "none";
     }
   }
 

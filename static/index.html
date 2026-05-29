@@ -358,7 +358,7 @@
     .hrc.checked { border-color: #0078d4; background: #f0f7ff; }
     .hrc-row {
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       padding: 12px 14px;
       gap: 10px;
       cursor: pointer;
@@ -381,18 +381,21 @@
     }
     .delete-mode .hrc-check { display: flex; }
     .hrc.checked .hrc-check { background: #0078d4; border-color: #0078d4; color: #fff; }
-    .hrc-icon { font-size: 1.2rem; flex-shrink: 0; }
+    .hrc-icon { font-size: 1.2rem; flex-shrink: 0; padding-top: 1px; }
     .hrc-body { flex: 1; min-width: 0; }
-    .hrc-merchant { font-size: 0.9rem; font-weight: 700; color: #111; }
-    .hrc-meta { font-size: 0.73rem; color: #888; margin-top: 2px; }
-    .hrc-amount { font-size: 0.88rem; font-weight: 700; color: #111; flex-shrink: 0; text-align: right; }
-    .hrc-expand { font-size: 0.7rem; color: #bbb; transition: transform 0.2s; flex-shrink: 0; margin-left: 2px; }
+    .hrc-merchant { font-size: 0.9rem; font-weight: 700; color: #111; word-break: keep-all; }
+    .hrc-meta { font-size: 0.73rem; color: #888; margin-top: 3px; }
+    .hrc-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
+    .hrc-amount { font-size: 0.88rem; font-weight: 700; color: #111; white-space: nowrap; }
+    .hrc-expand { font-size: 0.68rem; color: #bbb; transition: transform 0.2s; line-height: 1; }
     .hrc.expanded .hrc-expand { transform: rotate(180deg); }
     .hrc-detail {
       display: none;
       border-top: 1px solid #f0f0f0;
       padding: 10px 14px 14px;
       background: #fafafa;
+      max-height: 320px;
+      overflow-y: auto;
     }
     .hrc.expanded .hrc-detail { display: block; }
     .hrc-items-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
@@ -1435,19 +1438,21 @@
     body.appendChild(merchantDiv);
     body.appendChild(metaDiv);
 
+    const right = document.createElement("div");
+    right.className = "hrc-right";
     const amountDiv = document.createElement("div");
     amountDiv.className = "hrc-amount";
     amountDiv.textContent = fmtAmt(r.total);
-
     const arrow = document.createElement("div");
     arrow.className = "hrc-expand";
     arrow.textContent = "▼";
+    right.appendChild(amountDiv);
+    right.appendChild(arrow);
 
     row.appendChild(check);
     row.appendChild(icon);
     row.appendChild(body);
-    row.appendChild(amountDiv);
-    row.appendChild(arrow);
+    row.appendChild(right);
 
     const detail = document.createElement("div");
     detail.className = "hrc-detail";
