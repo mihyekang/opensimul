@@ -254,6 +254,19 @@ def list_grocery_receipts(days: int = 30, user_id: str = "") -> list[dict]:
             return [dict(r) for r in cur.fetchall()]
 
 
+def delete_grocery_receipt(receipt_id: int, user_id: str) -> bool:
+    """영수증 삭제. user_id 소유자만 삭제 가능. True if deleted."""
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM grocery_receipts WHERE id = %s AND user_id = %s",
+                (receipt_id, user_id),
+            )
+            deleted = cur.rowcount > 0
+        conn.commit()
+    return deleted
+
+
 def list_analyses(limit: int = 50) -> list[dict]:
     with _get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:

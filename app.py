@@ -380,6 +380,16 @@ async def grocery_recent(days: int = 90, user_id: str = ""):
     return rows
 
 
+@app.delete("/grocery/receipt/{receipt_id}")
+async def grocery_delete_receipt(receipt_id: int, user_id: str = ""):
+    """영수증 삭제 (소유자만 가능)."""
+    if not state.db_enabled:
+        return {"ok": False, "reason": "db_not_enabled"}
+    loop = asyncio.get_event_loop()
+    deleted = await loop.run_in_executor(None, lambda: db.delete_grocery_receipt(receipt_id, user_id))
+    return {"ok": deleted, "reason": None if deleted else "not_found"}
+
+
 @app.get("/grocery/debug")
 async def grocery_debug():
     """DB 연결 상태 및 최근 영수증 확인용 엔드포인트."""

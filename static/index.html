@@ -214,6 +214,58 @@
       font-size: 0.88rem;
     }
 
+    /* ── receipt delete block ── */
+    .receipt-delete-block {
+      align-self: stretch;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 0 2px;
+    }
+    .receipt-delete-label {
+      font-size: 0.72rem;
+      color: #aaa;
+      text-align: center;
+      letter-spacing: 0.04em;
+    }
+    .receipt-delete-card {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 11px 14px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.06);
+      transition: opacity 0.3s;
+    }
+    .receipt-delete-card.deleted { opacity: 0.35; background: #f9fafb; }
+    .rdc-id {
+      font-size: 0.72rem;
+      color: #bbb;
+      font-weight: 600;
+      min-width: 34px;
+      text-align: center;
+    }
+    .rdc-info { flex: 1; min-width: 0; }
+    .rdc-merchant { font-size: 0.88rem; font-weight: 700; color: #111; }
+    .rdc-meta { font-size: 0.73rem; color: #888; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .rdc-del-btn {
+      padding: 6px 11px;
+      background: #fee2e2;
+      color: #dc2626;
+      border: 1px solid #fca5a5;
+      border-radius: 8px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+      flex-shrink: 0;
+      font-family: inherit;
+    }
+    .rdc-del-btn:hover:not(:disabled) { background: #fecaca; }
+    .rdc-del-btn:disabled { background: #f3f4f6; color: #ccc; border-color: #e5e7eb; cursor: default; }
+
     /* ── chat area ── */
     #chat-wrap {
       width: 100%;
@@ -732,6 +784,14 @@
   }
 
   // ── send dispatcher ──
+  const RECEIPT_DELETE_RE = new RegExp(
+    "잘못\\s*(올렸|저장|업로드)" +
+    "|중복.*올렸|올렸.*중복|중복.*저장|중복.*됐|중복이야" +
+    "|삭제\\s*(하고|할|하려|해줘|해|하|해달|하자|할게|할래)" +
+    "|(영수증|구매).*(삭제|지우|없애)" +
+    "|(삭제|지우|없애).*(영수증|구매)"
+  );
+
   const RECEIPT_RENDER_RE = new RegExp(
     "렌더링|시각화" +
     "|카드\\s*(뉴스|이미지|형태|로\\s*(보여|만들|정리|해))" +
@@ -749,7 +809,9 @@
     } else {
       const msg = inputEl.value.trim();
       if (!msg) return;
-      if (RECEIPT_RENDER_RE.test(msg)) {
+      if (RECEIPT_DELETE_RE.test(msg)) {
+        await showReceiptDeleteUI(msg);
+      } else if (RECEIPT_RENDER_RE.test(msg)) {
         await showReceiptCards(msg);
       } else {
         await sendText(msg);
@@ -1001,6 +1063,97 @@
     groups.forEach(g => block.appendChild(_buildMerchantCard(g.merchant, g.receipts)));
     chatWrap.appendChild(block);
     chatWrap.scrollTop = chatWrap.scrollHeight;
+  }
+
+  // ── receipt delete UI ──
+  async function showReceiptDeleteUI(msg) {
+    streaming = true;
+    sendBtn.disabled = true;
+    inputEl.value = "";
+    inputEl.style.height = "auto";
+    addBubble("user", msg);
+    try {
+      const rows = await fetch(`/grocery/history?days=365&user_id=${encodeURIComponent(USER_CODE)}`).then(r => r.json());
+      if (!rows || rows.length === 0) {
+        const { bubble } = addBubble("assistant");
+        bubble.textContent = "삭제할 영수증이 없어요. 영수증 분석기에서 먼저 영수증을 저장해보세요 🧾";
+      } else {
+        chatWrap.appendChild(buildDeleteBlock(rows));
+        chatWrap.scrollTop = chatWrap.scrollHeight;
+        const { bubble } = addBubble("assistant");
+        bubble.textContent = `${rows.length}개 영수증이 있어요. 삭제하려는 항목의 🗑 버튼을 눌러주세요.`;
+      }
+    } catch (err) {
+      const { bubble } = addBubble("assistant");
+      bubble.textContent = `영수증을 불러오지 못했어요: ${err.message}`;
+    }
+    streaming = false;
+    sendBtn.disabled = false;
+    inputEl.focus();
+  }
+
+  function buildDeleteBlock(rows) {
+    const block = document.createElement("div");
+    block.className = "receipt-delete-block";
+    const lbl = document.createElement("p");
+    lbl.className = "receipt-delete-label";
+    lbl.textContent = `🗑 영수증 목록 · ${rows.length}개`;
+    block.appendChild(lbl);
+
+    rows.forEach(r => {
+      const card = document.createElement("div");
+      card.className = "receipt-delete-card";
+
+      const idBadge = document.createElement("div");
+      idBadge.className = "rdc-id";
+      idBadge.textContent = `#${r.id}`;
+
+      const info = document.createElement("div");
+      info.className = "rdc-info";
+      const merchant = document.createElement("div");
+      merchant.className = "rdc-merchant";
+      merchant.textContent = (r.is_refund ? "↩ " : "") + (r.merchant || "알 수 없음");
+      const meta = document.createElement("div");
+      meta.className = "rdc-meta";
+      const total = r.total != null ? r.total.toLocaleString("ko-KR") + "원" : "합계 미상";
+      meta.textContent = `${r.purchase_date || "날짜 미상"} · ${r.item_count ?? 0}개 품목 · ${total}`;
+      info.appendChild(merchant);
+      info.appendChild(meta);
+
+      const delBtn = document.createElement("button");
+      delBtn.className = "rdc-del-btn";
+      delBtn.textContent = "🗑 삭제";
+      delBtn.addEventListener("click", async () => {
+        const label = `${r.merchant || "알 수 없음"} · ${r.purchase_date || "날짜 미상"}`;
+        if (!confirm(`[${label}] 영수증을 삭제할까요?`)) return;
+        delBtn.disabled = true;
+        delBtn.textContent = "삭제 중…";
+        try {
+          const resp = await fetch(
+            `/grocery/receipt/${r.id}?user_id=${encodeURIComponent(USER_CODE)}`,
+            { method: "DELETE" }
+          );
+          const data = await resp.json();
+          if (data.ok) {
+            card.classList.add("deleted");
+            idBadge.textContent = "✓";
+            delBtn.textContent = "삭제됨";
+          } else {
+            delBtn.disabled = false;
+            delBtn.textContent = "🗑 삭제";
+          }
+        } catch {
+          delBtn.disabled = false;
+          delBtn.textContent = "🗑 삭제";
+        }
+      });
+
+      card.appendChild(idBadge);
+      card.appendChild(info);
+      card.appendChild(delBtn);
+      block.appendChild(card);
+    });
+    return block;
   }
 
   // ── on-demand receipt card rendering ──
