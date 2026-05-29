@@ -28,18 +28,23 @@ from session_manager import SessionManager
 
 logger = logging.getLogger(__name__)
 SESSION_RETENTION_DAYS = 7
-MAX_IMAGE_PX = 1568  # Azure OpenAI vision 권장 최대 해상도
+MAX_IMAGE_W = 1400  # 가로 상한 (landscape / wide 사진용)
+MAX_IMAGE_H = 9000  # 세로 상한 (매우 긴 스크린샷 극단치만 제한)
 
 
 def _resize_image(content: bytes, mime_type: str) -> tuple[bytes, str]:
-    """최장 변이 MAX_IMAGE_PX를 초과하는 이미지를 리사이즈. EXIF 회전도 보정."""
+    """가로가 넓거나(>1400) 세로가 극단적으로 길(>9000)때만 리사이즈. EXIF 회전 보정."""
     try:
         img = Image.open(io.BytesIO(content))
         img = ImageOps.exif_transpose(img)
         w, h = img.size
-        if max(w, h) > MAX_IMAGE_PX:
-            scale = MAX_IMAGE_PX / max(w, h)
-            img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
+        scale = 1.0
+        if w > MAX_IMAGE_W:
+            scale = min(scale, MAX_IMAGE_W / w)
+        if h > MAX_IMAGE_H:
+            scale = min(scale, MAX_IMAGE_H / h)
+        if scale < 1.0:
+            img = img.resize((max(1, int(w * scale)), max(1, int(h * scale))), Image.LANCZOS)
         if img.mode not in ("RGB", "L"):
             img = img.convert("RGB")
         buf = io.BytesIO()
