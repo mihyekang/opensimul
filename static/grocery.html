@@ -323,6 +323,111 @@
       border-color: #4ade80;
     }
 
+    /* ── auth overlay ── */
+    #auth-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.45);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+    #auth-overlay.visible { display: flex; }
+    #auth-modal {
+      background: #fff;
+      border-radius: 18px;
+      padding: 32px 28px;
+      width: min(90vw, 360px);
+      box-shadow: 0 8px 32px rgba(0,0,0,.18);
+    }
+    .auth-title {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: #111;
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .auth-tabs {
+      display: flex;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid #e0e0e0;
+      margin-bottom: 20px;
+    }
+    .auth-tab {
+      flex: 1;
+      padding: 9px 0;
+      background: none;
+      border: none;
+      font-size: 0.9rem;
+      font-weight: 500;
+      cursor: pointer;
+      color: #888;
+      transition: background 0.15s, color 0.15s;
+      font-family: inherit;
+    }
+    .auth-tab.active { background: #0078d4; color: #fff; }
+    .auth-field {
+      display: block;
+      width: 100%;
+      padding: 11px 14px;
+      border: 1px solid #ddd;
+      border-radius: 10px;
+      font-size: 0.9rem;
+      font-family: inherit;
+      outline: none;
+      margin-bottom: 12px;
+    }
+    .auth-field:focus { border-color: #0078d4; }
+    #auth-submit-btn {
+      display: block;
+      width: 100%;
+      padding: 12px;
+      background: #0078d4;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 4px;
+      transition: background 0.15s;
+      font-family: inherit;
+    }
+    #auth-submit-btn:hover:not(:disabled) { background: #106ebe; }
+    #auth-submit-btn:disabled { background: #b0c8e8; cursor: not-allowed; }
+    #auth-error-msg {
+      font-size: 0.8rem;
+      color: #dc2626;
+      text-align: center;
+      margin-top: 10px;
+      min-height: 1.2em;
+    }
+    .auth-hint { font-size: 0.75rem; color: #aaa; text-align: center; margin-top: 14px; }
+    /* user bar */
+    #user-bar {
+      display: none;
+      width: 100%;
+      max-width: 480px;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+    #user-bar-code { font-size: 0.8rem; color: #666; }
+    #logout-btn {
+      font-size: 0.75rem;
+      background: none;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      padding: 4px 10px;
+      color: #888;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    #logout-btn:hover { background: #f5f5f5; }
+
     /* raw JSON toggle */
     .raw-toggle {
       font-size: 0.75rem;
@@ -353,6 +458,10 @@
 
 <h1>영수증 추출 테스트 — Pass 1</h1>
 <p class="subtitle">이미지 업로드 → 품목 추출 → 검증 결과 확인</p>
+<div id="user-bar">
+  <span id="user-bar-code"></span>
+  <button id="logout-btn">로그아웃</button>
+</div>
 
 <div id="drop-zone">
   <div class="icon">🧾</div>
@@ -375,6 +484,22 @@
   <button id="bulk-save-btn">💾 저장하고 채팅에서 분석하기</button>
 </div>
 
+<!-- auth overlay -->
+<div id="auth-overlay">
+  <div id="auth-modal">
+    <p class="auth-title">🧾 영수증 분석</p>
+    <div class="auth-tabs">
+      <button id="tab-login" class="auth-tab active">로그인</button>
+      <button id="tab-register" class="auth-tab">회원가입</button>
+    </div>
+    <input id="auth-code-input" class="auth-field" type="text" placeholder="사용자 코드 (예: family01)" maxlength="30" autocomplete="username" />
+    <input id="auth-pass-input" class="auth-field" type="password" placeholder="비밀번호" maxlength="100" autocomplete="current-password" />
+    <button id="auth-submit-btn">로그인</button>
+    <p id="auth-error-msg"></p>
+    <p class="auth-hint">코드는 가족끼리 공유할 수 있어요 🏠</p>
+  </div>
+</div>
+
 <script>
   const dropZone      = document.getElementById("drop-zone");
   const fileInput     = document.getElementById("file-input");
@@ -387,13 +512,81 @@
   const bulkSaveBar   = document.getElementById("bulk-save-bar");
   const bulkSaveBtn   = document.getElementById("bulk-save-btn");
 
-  // 사용자 식별 — chat_session_id 공유
-  function getUserId() {
-    let uid = localStorage.getItem("chat_session_id");
-    if (!uid) { uid = crypto.randomUUID(); localStorage.setItem("chat_session_id", uid); }
-    return uid;
+  // ── auth ──
+  let authMode = "login";
+  let USER_ID  = localStorage.getItem("grocery_user_code") || "";
+
+  function showAuth() { document.getElementById("auth-overlay").classList.add("visible"); }
+  function hideAuth() { document.getElementById("auth-overlay").classList.remove("visible"); }
+
+  function updateUserBar() {
+    const bar = document.getElementById("user-bar");
+    if (USER_ID) {
+      document.getElementById("user-bar-code").textContent = `👤 ${USER_ID}`;
+      bar.style.display = "flex";
+    } else {
+      bar.style.display = "none";
+    }
   }
-  const USER_ID = getUserId();
+
+  document.getElementById("tab-login").addEventListener("click", () => {
+    authMode = "login";
+    document.getElementById("tab-login").classList.add("active");
+    document.getElementById("tab-register").classList.remove("active");
+    document.getElementById("auth-submit-btn").textContent = "로그인";
+    document.getElementById("auth-error-msg").textContent = "";
+  });
+  document.getElementById("tab-register").addEventListener("click", () => {
+    authMode = "register";
+    document.getElementById("tab-register").classList.add("active");
+    document.getElementById("tab-login").classList.remove("active");
+    document.getElementById("auth-submit-btn").textContent = "회원가입";
+    document.getElementById("auth-error-msg").textContent = "";
+  });
+
+  document.getElementById("auth-submit-btn").addEventListener("click", submitAuth);
+  document.getElementById("auth-pass-input").addEventListener("keydown", e => { if (e.key === "Enter") submitAuth(); });
+
+  async function submitAuth() {
+    const code     = document.getElementById("auth-code-input").value.trim();
+    const pass     = document.getElementById("auth-pass-input").value;
+    const errMsg   = document.getElementById("auth-error-msg");
+    const submitBtn = document.getElementById("auth-submit-btn");
+    if (!code || !pass) { errMsg.textContent = "코드와 비밀번호를 입력하세요."; return; }
+    submitBtn.disabled = true;
+    errMsg.textContent = "";
+    try {
+      const url  = authMode === "login" ? "/auth/login" : "/auth/register";
+      const resp = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_code: code, password: pass }),
+      });
+      const data = await resp.json();
+      if (data.ok) {
+        localStorage.setItem("grocery_user_code", data.user_code);
+        USER_ID = data.user_code;
+        updateUserBar();
+        hideAuth();
+      } else if (data.reason === "already_exists") {
+        errMsg.textContent = "이미 사용 중인 코드입니다. 다른 코드를 선택하세요.";
+      } else {
+        errMsg.textContent = authMode === "login" ? "코드 또는 비밀번호가 맞지 않습니다." : "오류가 발생했습니다.";
+      }
+    } catch (e) {
+      errMsg.textContent = "네트워크 오류가 발생했습니다.";
+    }
+    submitBtn.disabled = false;
+  }
+
+  document.getElementById("logout-btn").addEventListener("click", () => {
+    localStorage.removeItem("grocery_user_code");
+    USER_ID = "";
+    updateUserBar();
+    showAuth();
+  });
+
+  if (!USER_ID) { showAuth(); } else { updateUserBar(); }
 
   let selectedFiles = [];
   let extractedResults = []; // { result, filename, saved } for save tracking
@@ -669,7 +862,7 @@
           const resp = await fetch("/grocery/save", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ result: entry.result }),
+            body: JSON.stringify({ result: entry.result, user_id: USER_ID }),
           });
           const data = await resp.json();
           if (data.ok || data.reason === "db_not_enabled") {

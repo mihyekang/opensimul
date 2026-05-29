@@ -76,6 +76,12 @@
     }
     .hmenu-item:last-child { border-bottom: none; }
     .hmenu-item:hover { background: #f7f9fc; }
+    .hmenu-user {
+      padding: 10px 16px 8px;
+      font-size: 0.78rem;
+      color: #888;
+      border-bottom: 1px solid #f3f3f3;
+    }
 
     /* ── usage panel ── */
     #usage-panel {
@@ -461,10 +467,12 @@
 
 <!-- hamburger dropdown -->
 <div id="hamburger-menu">
+  <div class="hmenu-user">👤 <span id="hmenu-user-code"></span></div>
   <a href="/grocery" class="hmenu-item">🧾 영수증 분석기</a>
   <button id="memory-btn" class="hmenu-item">🧠 기억</button>
   <button id="reset-btn" class="hmenu-item">🔄 대화 초기화</button>
   <button id="usage-btn" class="hmenu-item">📊 사용량 확인</button>
+  <button id="logout-btn" class="hmenu-item" style="color:#dc2626;">🚪 로그아웃</button>
 </div>
 
 <!-- usage panel -->
@@ -506,6 +514,11 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script>
+  // ── auth guard ──
+  const _authCode = localStorage.getItem("grocery_user_code");
+  if (!_authCode) { window.location.replace("/grocery"); }
+  const USER_CODE = _authCode || "";
+
   marked.setOptions({
     highlight: (code, lang) => {
       const language = hljs.getLanguage(lang) ? lang : "plaintext";
@@ -574,6 +587,7 @@
     return sid;
   }
   const SESSION_ID = getSessionId();
+  document.getElementById("hmenu-user-code").textContent = USER_CODE;
 
   // ── info ──
   async function loadInfo() {
@@ -629,6 +643,12 @@
     e.stopPropagation();
     closeAllPanels();
     resetChat();
+  });
+
+  document.getElementById("logout-btn").addEventListener("click", e => {
+    e.stopPropagation();
+    localStorage.removeItem("grocery_user_code");
+    window.location.href = "/grocery";
   });
 
   // 패널 내부 클릭은 전파 차단
@@ -770,7 +790,7 @@
     const resp = await fetch("/chat/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: msg, session_id: SESSION_ID }),
+      body: JSON.stringify({ message: msg, session_id: SESSION_ID, user_id: USER_CODE }),
     });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 
@@ -806,7 +826,7 @@
     const resp = await fetch("/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: msg, session_id: SESSION_ID }),
+      body: JSON.stringify({ message: msg, session_id: SESSION_ID, user_id: USER_CODE }),
     });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
@@ -991,7 +1011,7 @@
     inputEl.style.height = "auto";
     addBubble("user", msg);
     try {
-      const rows = await fetch(`/grocery/recent?days=90&user_id=${SESSION_ID}`).then(r => r.json());
+      const rows = await fetch(`/grocery/recent?days=90&user_id=${encodeURIComponent(USER_CODE)}`).then(r => r.json());
       if (!rows || rows.length === 0) {
         const { bubble } = addBubble("assistant");
         bubble.textContent = "저장된 영수증이 없어요. 영수증 분석기에서 먼저 영수증을 저장해보세요 🧾";

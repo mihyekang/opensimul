@@ -2,9 +2,11 @@
 PostgreSQL operations: image analyses, sessions, messages, grocery receipts.
 """
 
+import hashlib
 import json
 import logging
 import os
+import secrets
 from datetime import date, timedelta
 
 import psycopg2
@@ -79,6 +81,13 @@ def init_db() -> None:
                 )
             """)
             cur.execute("CREATE INDEX IF NOT EXISTS idx_grocery_items_receipt ON grocery_items(receipt_id)")
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    user_code     TEXT PRIMARY KEY,
+                    password_hash TEXT NOT NULL,
+                    created_at    TIMESTAMPTZ DEFAULT NOW()
+                )
+            """)
         conn.commit()
 
 
@@ -255,3 +264,46 @@ def list_analyses(limit: int = 50) -> list[dict]:
                 FROM image_analyses ORDER BY created_at DESC LIMIT %s
             """, (limit,))
             return [dict(r) for r in cur.fetchall()]
+
+
+# ── user auth ──────────────────────────────────────────────────────────────────
+
+def _hash_password(password: str) -> str:
+    salt = secrets.token_hex(16)
+    h = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 100_000)
+    return f"{salt}:{h.hex()}"
+
+
+def _verify_password(password: str, stored: str) -> bool:
+    try:
+        salt, h = stored.split(":", 1)
+        check = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 100_000)
+        return secrets.compare_digest(check.hex(), h)
+    except Exception:
+        return False
+
+
+def login_user(user_code: str, password: str) -> bool:
+    """코드+비밀번호 검증. 일치하면 True."""
+    with _get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT password_hash FROM users WHERE user_code = %s", (user_code,))
+            row = cur.fetchone()
+            if not row:
+                return False
+            return _verify_password(password, row["password_hash"])
+
+
+def register_user(user_code: str, password: str) -> bool:
+    """신규 코드 생성. 이미 존재하면 False."""
+    try:
+        with _get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO users (user_code, password_hash) VALUES (%s, %s)",
+                    (user_code, _hash_password(password)),
+                )
+            conn.commit()
+        return True
+    except Exception:
+        return False

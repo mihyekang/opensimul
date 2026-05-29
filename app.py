@@ -66,9 +66,15 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # ---------- models ----------
 
+class AuthRequest(BaseModel):
+    user_code: str
+    password: str
+
+
 class ChatRequest(BaseModel):
     message: str
     session_id: str = ""
+    user_id: str = ""  # grocery_user_code
 
 
 class ResetRequest(BaseModel):
@@ -219,7 +225,7 @@ async def _inject_grocery_context(c, user_id: str = "") -> None:
 @app.post("/chat")
 async def chat(req: ChatRequest):
     c = _client(req.session_id)
-    await _inject_grocery_context(c, req.session_id)
+    await _inject_grocery_context(c, req.user_id or req.session_id)
     loop = asyncio.get_event_loop()
     reply, usage = await loop.run_in_executor(None, lambda: c.chat(req.message))
     turn_cost_usd = usage.cost(c.config.input_price_per_m, c.config.output_price_per_m)
@@ -405,3 +411,23 @@ async def analyses():
         if r.get("cost_usd"):
             r["cost_usd"] = float(r["cost_usd"])
     return rows
+
+
+# ---------- auth ----------
+
+@app.post("/auth/login")
+async def auth_login(req: AuthRequest):
+    if not state.db_enabled:
+        return {"ok": True, "user_code": req.user_code}
+    loop = asyncio.get_event_loop()
+    ok = await loop.run_in_executor(None, lambda: db.login_user(req.user_code, req.password))
+    return {"ok": ok, "user_code": req.user_code if ok else None, "reason": None if ok else "invalid"}
+
+
+@app.post("/auth/register")
+async def auth_register(req: AuthRequest):
+    if not state.db_enabled:
+        return {"ok": True, "user_code": req.user_code}
+    loop = asyncio.get_event_loop()
+    ok = await loop.run_in_executor(None, lambda: db.register_user(req.user_code, req.password))
+    return {"ok": ok, "user_code": req.user_code if ok else None, "reason": None if ok else "already_exists"}
