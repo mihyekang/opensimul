@@ -103,7 +103,7 @@ def extract_pass1_bytes(image_bytes: bytes, mime_type: str, config: ClientConfig
     )
 
     response = client.chat.completions.create(
-        model=config.deployment,
+        model=config.vision_deployment,
         messages=[
             {"role": "system", "content": PASS1_SYSTEM},
             {"role": "user", "content": [

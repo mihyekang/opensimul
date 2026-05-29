@@ -28,15 +28,16 @@ MEMORY_FILE = os.environ.get("MEMORY_FILE", "memory.json")
 class ClientConfig:
     endpoint: str = field(default_factory=lambda: os.environ["AZURE_OPENAI_ENDPOINT"])
     api_key: str = field(default_factory=lambda: os.environ["AZURE_OPENAI_API_KEY"])
-    deployment: str = field(default_factory=lambda: os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-4o"))
+    deployment: str = field(default_factory=lambda: os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-5.4-mini"))
+    vision_deployment: str = field(default_factory=lambda: os.environ.get("VISION_DEPLOYMENT", "gpt-4o"))
     api_version: str = field(default_factory=lambda: os.environ.get("AZURE_OPENAI_API_VERSION", "2024-12-01-preview"))
     verify_ssl: bool = field(default_factory=lambda: os.environ.get("AZURE_OPENAI_VERIFY_SSL", "true").lower() != "false")
     max_retries: int = 3
     retry_delay: float = 1.0
     max_completion_tokens: int = 16384
     max_history_turns: int = field(default_factory=lambda: int(os.environ.get("MAX_HISTORY_TURNS", "20")))
-    input_price_per_m: float = field(default_factory=lambda: float(os.environ.get("PRICE_INPUT_PER_M", "2.50")))
-    output_price_per_m: float = field(default_factory=lambda: float(os.environ.get("PRICE_OUTPUT_PER_M", "10.00")))
+    input_price_per_m: float = field(default_factory=lambda: float(os.environ.get("PRICE_INPUT_PER_M", "0.15")))
+    output_price_per_m: float = field(default_factory=lambda: float(os.environ.get("PRICE_OUTPUT_PER_M", "0.60")))
 
 
 @dataclass
@@ -137,12 +138,12 @@ class AzureOpenAIClient:
 
     # ── retry wrappers ─────────────────────────────────────────────────────────
 
-    def _call_with_retry(self, messages: list[dict]) -> tuple[str, TurnUsage]:
+    def _call_with_retry(self, messages: list[dict], model: str | None = None) -> tuple[str, TurnUsage]:
         last_exc: Exception | None = None
         for attempt in range(self.config.max_retries):
             try:
                 response = self._client.chat.completions.create(
-                    model=self.config.deployment,
+                    model=model or self.config.deployment,
                     messages=messages,
                     max_completion_tokens=self.config.max_completion_tokens,
                 )
@@ -232,7 +233,7 @@ class AzureOpenAIClient:
                 ],
             },
         ]
-        return self._call_with_retry(messages)
+        return self._call_with_retry(messages, model=self.config.vision_deployment)
 
     def reset(self, base_system_prompt: str | None = None) -> None:
         if base_system_prompt:
