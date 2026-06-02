@@ -446,22 +446,95 @@
       border: none;
       cursor: pointer;
       padding: 0;
-      margin-bottom: 6px;
+      margin-bottom: 4px;
+      font-family: inherit;
     }
-    .raw-json {
-      display: none;
-      background: #f6f8fa;
-      border: 1px solid #e0e0e0;
-      border-radius: 8px;
-      padding: 12px;
-      font-size: 0.72rem;
-      font-family: monospace;
-      white-space: pre-wrap;
-      word-break: break-all;
-      color: #333;
-      max-height: 300px;
-      overflow-y: auto;
+
+    /* ── edit mode ── */
+    .card.edit-mode { border-color: #0078d4; background: #f8fbff; }
+    .edit-header {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+      align-items: center;
     }
+    .edit-input {
+      border: 1px solid #d0d0d0;
+      border-radius: 6px;
+      padding: 5px 7px;
+      font-size: 0.82rem;
+      font-family: inherit;
+      background: #fff;
+      outline: none;
+      box-sizing: border-box;
+      transition: border-color 0.12s, box-shadow 0.12s;
+    }
+    .edit-input:focus { border-color: #0078d4; box-shadow: 0 0 0 2px rgba(0,120,212,.12); }
+    .edit-name { width: 100%; }
+    .edit-qty  { width: 52px; text-align: center; }
+    .edit-amt  { width: 88px; text-align: right; }
+    .edit-del-row {
+      background: none; border: none;
+      color: #dc2626; cursor: pointer;
+      font-size: 0.85rem; padding: 2px 4px;
+      border-radius: 4px; line-height: 1;
+    }
+    .edit-del-row:hover { background: #fee2e2; }
+    .edit-btn-add-row {
+      display: block; width: 100%; margin-top: 8px; padding: 7px;
+      border: 1.5px dashed #c8cdd5; border-radius: 8px;
+      background: #f9fafb; color: #888; font-size: 0.82rem;
+      cursor: pointer; font-family: inherit;
+      transition: border-color 0.12s, color 0.12s;
+    }
+    .edit-btn-add-row:hover { border-color: #0078d4; color: #0078d4; }
+    .edit-actions { display: flex; gap: 8px; margin-top: 12px; }
+    .edit-btn-cancel {
+      flex: 1; padding: 9px;
+      border: 1px solid #e0e0e0; border-radius: 8px;
+      background: #fff; color: #555;
+      font-size: 0.85rem; font-weight: 600;
+      cursor: pointer; font-family: inherit;
+    }
+    .edit-btn-cancel:hover { background: #f5f5f5; }
+    .edit-btn-apply {
+      flex: 2; padding: 9px; border: none; border-radius: 8px;
+      background: #0078d4; color: #fff;
+      font-size: 0.85rem; font-weight: 600;
+      cursor: pointer; font-family: inherit;
+    }
+    .edit-btn-apply:hover { background: #005fa3; }
+    .edit-mode-toggle {
+      font-size: 0.72rem; background: none;
+      border: 1px solid #d0d0d0; border-radius: 6px;
+      padding: 3px 8px; color: #555; cursor: pointer;
+      font-family: inherit; white-space: nowrap;
+      transition: border-color 0.12s, color 0.12s;
+    }
+    .edit-mode-toggle:hover { border-color: #0078d4; color: #0078d4; background: #f0f7ff; }
+
+    /* JSON edit */
+    .json-edit-area {
+      display: none; width: 100%;
+      min-height: 180px; max-height: 400px;
+      padding: 12px; margin-top: 4px; margin-bottom: 6px;
+      border: 1px solid #e0e0e0; border-radius: 8px;
+      font-size: 0.72rem; font-family: monospace;
+      resize: vertical; line-height: 1.5;
+      background: #f6f8fa; color: #333;
+      outline: none; box-sizing: border-box;
+    }
+    .json-edit-area:focus { border-color: #0078d4; }
+    .json-apply-btn {
+      display: none; margin-bottom: 4px; padding: 7px 14px;
+      border: none; border-radius: 8px;
+      background: #0078d4; color: #fff;
+      font-size: 0.8rem; font-weight: 600;
+      cursor: pointer; font-family: inherit;
+    }
+    .json-apply-btn:hover { background: #005fa3; }
+    .json-error { display: none; font-size: 0.75rem; color: #dc2626; margin-bottom: 6px; }
 
     /* mode tabs */
     .mode-tabs {
@@ -918,93 +991,26 @@
     const section = document.createElement("div");
     section.className = "result-section";
 
-    // file label
     const label = document.createElement("p");
     label.className = "result-file-label";
     label.textContent = filename;
     section.appendChild(label);
 
-    // issues box
     const issuesBox = document.createElement("div");
-    issuesBox.className = "issues";
-    if (issues && issues.length) {
-      issuesBox.innerHTML = issues.map(i => `<p>${escHtml(i)}</p>`).join("");
-    } else {
-      issuesBox.innerHTML = "<p>✅ 검증 통과</p>";
-      issuesBox.classList.add("pass");
-    }
+    issuesBox.className = (issues && issues.length) ? "issues" : "issues pass";
+    issuesBox.innerHTML = (issues && issues.length)
+      ? issues.map(i => `<p>${escHtml(i)}</p>`).join("")
+      : "<p>✅ 검증 통과</p>";
     section.appendChild(issuesBox);
 
-    // card
-    const card = document.createElement("div");
-    card.className = "card";
+    // card container — rebuilt on every renderView / edit apply
+    const cardWrap = document.createElement("div");
+    section.appendChild(cardWrap);
 
-    const dateText = result.purchase_date || "날짜 없음";
-    const dateClass = result._date_inferred ? "date inferred" : "date";
-    const dateTitle = result._date_inferred ? ' title="영수증에 날짜 없음 — 오늘 날짜 사용"' : '';
-
-    card.innerHTML = `
-      <div class="card-header">
-        <span class="merchant">${escHtml(result.merchant || "—")}</span>
-        <span>
-          ${result.is_refund ? '<span class="badge-refund">환불</span>' : ''}
-          <span class="${dateClass}"${dateTitle}>${escHtml(dateText)}${result._date_inferred ? ' *' : ''}</span>
-        </span>
-      </div>
-      <table class="items-table">
-        <thead><tr>
-          <th>품목 (raw)</th>
-          <th class="qty">수량</th>
-          <th style="text-align:right">금액</th>
-        </tr></thead>
-        <tbody id="tbody-placeholder"></tbody>
-      </table>
-      <div class="total-row">
-        <span>합계</span>
-        <span id="total-placeholder"></span>
-      </div>
-    `;
-    section.appendChild(card);
-
-    // fill items
-    const tbody = card.querySelector("#tbody-placeholder");
-    tbody.removeAttribute("id");
-    (result.items || []).forEach(item => {
-      const tr = document.createElement("tr");
-      const isCancelled = !!item.is_cancelled;
-      const isDiscount = !isCancelled && item.amount != null && item.amount < 0;
-      const isUnrecognized = !isCancelled && item.amount == null;
-      if (isCancelled) tr.className = "cancelled";
-      else if (isDiscount) tr.className = "discount";
-      else if (isUnrecognized) tr.className = "unrecognized";
-      tr.innerHTML = `
-        <td>${isDiscount ? "↳ " : ""}${escHtml(item.raw_name || "—")}</td>
-        <td class="qty">${(isDiscount || isCancelled) ? "" : (item.qty ?? 1)}</td>
-        <td class="amount">${fmt(item.amount)}</td>
-      `;
-      tbody.appendChild(tr);
-    });
-
-    // fill total (only recognized items)
-    const allItems = result.items || [];
-    const activeItems = allItems.filter(i => i.amount != null && !i.is_cancelled);
-    const activeSum = activeItems.reduce((s, i) => s + i.amount, 0);
-    const hasCancelled = allItems.some(i => i.is_cancelled);
-    const hasUnrecognized = allItems.some(i => i.amount == null && !i.is_cancelled);
-    const hasDiscount = activeItems.some(i => i.amount < 0);
-    const totalEl = card.querySelector("#total-placeholder");
-    totalEl.removeAttribute("id");
-    let subNote = "";
-    if (hasCancelled && hasUnrecognized) subNote = "(취소·미인식 제외)";
-    else if (hasCancelled) subNote = "(취소 제외)";
-    else if (hasUnrecognized) subNote = "(인식된 항목만)";
-    else if (hasDiscount) subNote = "(할인 포함)";
-    totalEl.innerHTML = fmt(activeSum) +
-      (subNote ? `<span class="total-sub">${subNote}</span>` : "");
-
-    // individual save button
+    // save button
+    let saveBtn = null;
     if (entry) {
-      const saveBtn = document.createElement("button");
+      saveBtn = document.createElement("button");
       saveBtn.className = "save-btn";
       saveBtn.textContent = "💾 이 영수증 저장";
       saveBtn.addEventListener("click", async () => {
@@ -1017,8 +1023,8 @@
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ result: entry.result, user_id: USER_ID }),
           });
-          const data = await resp.json();
-          if (data.ok || data.reason === "db_not_enabled") {
+          const d = await resp.json();
+          if (d.ok || d.reason === "db_not_enabled") {
             entry.saved = true;
             saveBtn.textContent = "✅ 저장됨";
             saveBtn.classList.add("saved");
@@ -1026,7 +1032,7 @@
             saveBtn.disabled = false;
             saveBtn.textContent = "💾 이 영수증 저장";
           }
-        } catch (e) {
+        } catch {
           entry.saved = true;
           saveBtn.textContent = "✅ 저장됨";
           saveBtn.classList.add("saved");
@@ -1036,21 +1042,255 @@
       section.appendChild(saveBtn);
     }
 
-    // raw JSON toggle
-    const toggle = document.createElement("button");
-    toggle.className = "raw-toggle";
-    toggle.textContent = "▶ JSON 원본 보기";
-    const pre = document.createElement("pre");
-    pre.className = "raw-json";
-    pre.textContent = JSON.stringify(result, null, 2);
-    toggle.addEventListener("click", () => {
-      const open = pre.style.display === "block";
-      pre.style.display = open ? "none" : "block";
-      toggle.textContent = open ? "▶ JSON 원본 보기" : "▼ JSON 원본 닫기";
-    });
-    section.appendChild(toggle);
-    section.appendChild(pre);
+    // JSON edit section
+    const jsonToggle = document.createElement("button");
+    jsonToggle.className = "raw-toggle";
+    jsonToggle.textContent = "▶ JSON 편집";
+    section.appendChild(jsonToggle);
 
+    const jsonArea = document.createElement("textarea");
+    jsonArea.className = "json-edit-area";
+    section.appendChild(jsonArea);
+
+    const jsonApplyBtn = document.createElement("button");
+    jsonApplyBtn.className = "json-apply-btn";
+    jsonApplyBtn.textContent = "JSON 적용";
+    section.appendChild(jsonApplyBtn);
+
+    const jsonError = document.createElement("div");
+    jsonError.className = "json-error";
+    section.appendChild(jsonError);
+
+    function syncJson() { jsonArea.value = JSON.stringify(entry.result, null, 2); }
+
+    jsonToggle.addEventListener("click", () => {
+      const open = jsonArea.style.display === "block";
+      if (!open) syncJson();
+      jsonArea.style.display = open ? "none" : "block";
+      jsonApplyBtn.style.display = open ? "none" : "inline-block";
+      jsonError.style.display = "none";
+      jsonToggle.textContent = open ? "▶ JSON 편집" : "▼ JSON 닫기";
+    });
+
+    jsonApplyBtn.addEventListener("click", () => {
+      try {
+        const parsed = JSON.parse(jsonArea.value);
+        // replace object contents while keeping reference
+        for (const k in entry.result) delete entry.result[k];
+        Object.assign(entry.result, parsed);
+        jsonError.style.display = "none";
+        renderView();
+        syncJson();
+        jsonApplyBtn.textContent = "✓ 적용됨";
+        setTimeout(() => { jsonApplyBtn.textContent = "JSON 적용"; }, 1500);
+      } catch (e) {
+        jsonError.style.display = "block";
+        jsonError.textContent = `JSON 오류: ${e.message}`;
+      }
+    });
+
+    // ── view renderer ──
+    function renderView() {
+      cardWrap.innerHTML = "";
+      cardWrap.appendChild(buildViewCard());
+    }
+
+    function buildViewCard() {
+      const r = entry.result;
+      const card = document.createElement("div");
+      card.className = "card";
+
+      // header
+      const header = document.createElement("div");
+      header.className = "card-header";
+      const merchantSpan = document.createElement("span");
+      merchantSpan.className = "merchant";
+      merchantSpan.textContent = r.merchant || "—";
+      const rightSpan = document.createElement("span");
+      rightSpan.style.cssText = "display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end";
+      if (r.is_refund) {
+        const badge = document.createElement("span");
+        badge.className = "badge-refund";
+        badge.textContent = "환불";
+        rightSpan.appendChild(badge);
+      }
+      const dateSpan = document.createElement("span");
+      dateSpan.className = r._date_inferred ? "date inferred" : "date";
+      if (r._date_inferred) dateSpan.title = "영수증에 날짜 없음 — 오늘 날짜 사용";
+      dateSpan.textContent = (r.purchase_date || "날짜 없음") + (r._date_inferred ? " *" : "");
+      rightSpan.appendChild(dateSpan);
+      const editToggle = document.createElement("button");
+      editToggle.className = "edit-mode-toggle";
+      editToggle.textContent = "✏ 수정";
+      editToggle.addEventListener("click", () => {
+        cardWrap.innerHTML = "";
+        cardWrap.appendChild(buildEditCard());
+      });
+      rightSpan.appendChild(editToggle);
+      header.appendChild(merchantSpan);
+      header.appendChild(rightSpan);
+      card.appendChild(header);
+
+      // items table
+      const table = document.createElement("table");
+      table.className = "items-table";
+      table.innerHTML = `<thead><tr><th>품목</th><th class="qty">수량</th><th style="text-align:right">금액</th></tr></thead>`;
+      const tbody = document.createElement("tbody");
+      (r.items || []).forEach(item => {
+        const tr = document.createElement("tr");
+        const isCancelled = !!item.is_cancelled;
+        const isDiscount = !isCancelled && item.amount != null && item.amount < 0;
+        const isUnrecognized = !isCancelled && item.amount == null;
+        if (isCancelled) tr.className = "cancelled";
+        else if (isDiscount) tr.className = "discount";
+        else if (isUnrecognized) tr.className = "unrecognized";
+        tr.innerHTML = `<td>${isDiscount ? "↳ " : ""}${escHtml(item.raw_name || "—")}</td><td class="qty">${(isDiscount || isCancelled) ? "" : (item.qty ?? 1)}</td><td class="amount">${fmt(item.amount)}</td>`;
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+      card.appendChild(table);
+
+      // total
+      const allItems = r.items || [];
+      const activeItems = allItems.filter(i => i.amount != null && !i.is_cancelled);
+      const activeSum = activeItems.reduce((s, i) => s + i.amount, 0);
+      const hasCancelled = allItems.some(i => i.is_cancelled);
+      const hasUnrecognized = allItems.some(i => i.amount == null && !i.is_cancelled);
+      const hasDiscount = activeItems.some(i => i.amount < 0);
+      let subNote = "";
+      if (hasCancelled && hasUnrecognized) subNote = "(취소·미인식 제외)";
+      else if (hasCancelled) subNote = "(취소 제외)";
+      else if (hasUnrecognized) subNote = "(인식된 항목만)";
+      else if (hasDiscount) subNote = "(할인 포함)";
+      const totalRow = document.createElement("div");
+      totalRow.className = "total-row";
+      totalRow.innerHTML = `<span>합계</span><span>${fmt(activeSum)}${subNote ? `<span class="total-sub">${subNote}</span>` : ""}</span>`;
+      card.appendChild(totalRow);
+      return card;
+    }
+
+    // ── edit card ──
+    function buildEditCard() {
+      const r = entry.result;
+      const card = document.createElement("div");
+      card.className = "card edit-mode";
+
+      // merchant + date inputs
+      const headerDiv = document.createElement("div");
+      headerDiv.className = "edit-header";
+      const merchantInput = document.createElement("input");
+      merchantInput.className = "edit-input";
+      merchantInput.placeholder = "업체명";
+      merchantInput.value = r.merchant || "";
+      merchantInput.style.flex = "1";
+      merchantInput.style.minWidth = "100px";
+      const dateInput = document.createElement("input");
+      dateInput.className = "edit-input";
+      dateInput.type = "date";
+      dateInput.value = r.purchase_date || "";
+      dateInput.style.width = "140px";
+      headerDiv.appendChild(merchantInput);
+      headerDiv.appendChild(dateInput);
+      card.appendChild(headerDiv);
+
+      // items edit table
+      const table = document.createElement("table");
+      table.className = "items-table";
+      table.innerHTML = `<thead><tr><th>품목</th><th class="qty">수량</th><th style="text-align:right">금액</th><th></th></tr></thead>`;
+      const tbody = document.createElement("tbody");
+      const itemsData = JSON.parse(JSON.stringify(r.items || []));
+
+      function renderRows() {
+        tbody.innerHTML = "";
+        itemsData.forEach((item, idx) => {
+          const tr = document.createElement("tr");
+          const nameInp = document.createElement("input");
+          nameInp.className = "edit-input edit-name";
+          nameInp.value = item.raw_name || "";
+          nameInp.placeholder = "품목명";
+          const qtyInp = document.createElement("input");
+          qtyInp.className = "edit-input edit-qty";
+          qtyInp.type = "number";
+          qtyInp.min = 1;
+          qtyInp.value = item.qty ?? 1;
+          const amtInp = document.createElement("input");
+          amtInp.className = "edit-input edit-amt";
+          amtInp.type = "number";
+          amtInp.value = item.amount ?? "";
+          amtInp.placeholder = "0";
+          const delBtn = document.createElement("button");
+          delBtn.className = "edit-del-row";
+          delBtn.title = "행 삭제";
+          delBtn.textContent = "✕";
+          delBtn.addEventListener("click", () => { itemsData.splice(idx, 1); renderRows(); });
+          const tdN = document.createElement("td"); tdN.appendChild(nameInp);
+          const tdQ = document.createElement("td"); tdQ.className = "qty"; tdQ.appendChild(qtyInp);
+          const tdA = document.createElement("td"); tdA.className = "amount"; tdA.appendChild(amtInp);
+          const tdD = document.createElement("td"); tdD.style.width = "28px"; tdD.appendChild(delBtn);
+          tr.append(tdN, tdQ, tdA, tdD);
+          tbody.appendChild(tr);
+        });
+      }
+      renderRows();
+      table.appendChild(tbody);
+      card.appendChild(table);
+
+      // add row button
+      const addRowBtn = document.createElement("button");
+      addRowBtn.className = "edit-btn-add-row";
+      addRowBtn.textContent = "+ 행 추가";
+      addRowBtn.addEventListener("click", () => {
+        itemsData.push({ raw_name: "", qty: 1, unit_price: null, amount: null, is_cancelled: false });
+        renderRows();
+      });
+      card.appendChild(addRowBtn);
+
+      // cancel / apply
+      const actDiv = document.createElement("div");
+      actDiv.className = "edit-actions";
+      const cancelBtn = document.createElement("button");
+      cancelBtn.className = "edit-btn-cancel";
+      cancelBtn.textContent = "취소";
+      cancelBtn.addEventListener("click", () => renderView());
+      const applyBtn = document.createElement("button");
+      applyBtn.className = "edit-btn-apply";
+      applyBtn.textContent = "적용";
+      applyBtn.addEventListener("click", () => {
+        // collect latest input values (handles typing without re-render)
+        [...tbody.querySelectorAll("tr")].forEach((tr, i) => {
+          const [nameInp, qtyInp, amtInp] = tr.querySelectorAll("input");
+          const amtVal = parseFloat(amtInp.value);
+          itemsData[i] = {
+            ...(itemsData[i] || {}),
+            raw_name: nameInp.value.trim() || "—",
+            qty: parseInt(qtyInp.value) || 1,
+            amount: isNaN(amtVal) ? null : amtVal,
+          };
+        });
+        entry.result.merchant = merchantInput.value.trim() || r.merchant;
+        entry.result.purchase_date = dateInput.value || r.purchase_date;
+        entry.result.items = itemsData;
+        entry.result.total = itemsData
+          .filter(i => i.amount != null && !i.is_cancelled)
+          .reduce((s, i) => s + i.amount, 0);
+        renderView();
+        if (jsonArea.style.display === "block") syncJson();
+        // reset save state so updated data can be saved
+        if (saveBtn && entry.saved) {
+          entry.saved = false;
+          saveBtn.textContent = "💾 이 영수증 저장";
+          saveBtn.disabled = false;
+          saveBtn.classList.remove("saved");
+          updateBulkSaveBtn();
+        }
+      });
+      actDiv.appendChild(cancelBtn);
+      actDiv.appendChild(applyBtn);
+      card.appendChild(actDiv);
+      return card;
+    }
+
+    renderView();
     return section;
   }
 </script>
