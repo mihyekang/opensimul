@@ -291,6 +291,28 @@ def delete_grocery_receipt(receipt_id: int, user_id: str) -> bool:
     return deleted
 
 
+def update_grocery_receipt_meta(receipt_id: int, merchant: str | None, purchase_date: str | None, user_id: str) -> bool:
+    """영수증 메타데이터 수정. 소유자만 가능. True if updated."""
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            updates = []
+            params = []
+            if merchant is not None:
+                updates.append("merchant = %s")
+                params.append(merchant)
+            if purchase_date is not None:
+                updates.append("purchase_date = %s")
+                params.append(purchase_date)
+            if not updates:
+                return False
+            params.extend([receipt_id, user_id])
+            sql = f"UPDATE grocery_receipts SET {', '.join(updates)} WHERE id = %s AND user_id = %s"
+            cur.execute(sql, params)
+            updated = cur.rowcount > 0
+        conn.commit()
+    return updated
+
+
 def list_analyses(limit: int = 50) -> list[dict]:
     with _get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:

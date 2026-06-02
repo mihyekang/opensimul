@@ -119,6 +119,12 @@ class GrocerySaveRequest(BaseModel):
     user_id: str = ""
 
 
+class GroceryUpdateRequest(BaseModel):
+    merchant: str | None = None
+    purchase_date: str | None = None
+    user_id: str = ""
+
+
 class TextExtractRequest(BaseModel):
     text: str
     user_id: str = ""
@@ -467,6 +473,18 @@ async def grocery_delete_receipt(receipt_id: int, user_id: str = ""):
     loop = asyncio.get_event_loop()
     deleted = await loop.run_in_executor(None, lambda: db.delete_grocery_receipt(receipt_id, user_id))
     return {"ok": deleted, "reason": None if deleted else "not_found"}
+
+
+@app.patch("/grocery/receipt/{receipt_id}")
+async def grocery_update_receipt(receipt_id: int, req: GroceryUpdateRequest):
+    """영수증 메타데이터 수정 (merchant, purchase_date)."""
+    if not state.db_enabled:
+        return {"ok": False, "reason": "db_not_enabled"}
+    loop = asyncio.get_event_loop()
+    updated = await loop.run_in_executor(
+        None, lambda: db.update_grocery_receipt_meta(receipt_id, req.merchant, req.purchase_date, req.user_id)
+    )
+    return {"ok": updated, "reason": None if updated else "not_found"}
 
 
 @app.get("/grocery/debug")

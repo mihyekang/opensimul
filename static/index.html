@@ -412,7 +412,7 @@
       transition: max-height 0.25s ease;
     }
     .hrc.expanded .hrc-detail {
-      max-height: 400px;
+      max-height: 600px;
       overflow-y: auto;
       border-top: 1px solid #f0f0f0;
       padding: 10px 14px 14px;
@@ -782,6 +782,20 @@
     .week-merchant-row:last-child { border-bottom: none; }
     .week-merchant-name { color: #333; font-weight: 600; }
     .week-empty { text-align: center; padding: 60px 20px; color: #aaa; font-size: 0.88rem; }
+
+    /* edit buttons */
+    .hrc-edit-btn {
+      padding: 4px 8px;
+      background: none;
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      font-size: 0.72rem;
+      color: #0078d4;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.12s;
+    }
+    .hrc-edit-btn:hover { background: #e8f3fc; }
   </style>
 </head>
 <body>
@@ -841,6 +855,27 @@
   </div>
   <input type="file" id="file-input" accept="image/*" style="display:none" />
 </footer>
+
+<!-- receipt edit modal -->
+<div id="receipt-edit-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:2000;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:18px;padding:24px;width:min(90vw,360px);box-shadow:0 8px 32px rgba(0,0,0,.18);">
+    <p style="font-size:1rem;font-weight:700;color:#111;margin-bottom:16px;">🔧 영수증 수정</p>
+    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px;">
+      <div style="display:flex;flex-direction:column;">
+        <label style="font-size:0.78rem;color:#555;font-weight:600;margin-bottom:4px;">업체</label>
+        <input id="edit-merchant" type="text" style="padding:8px;border:1px solid #e0e0e0;border-radius:8px;font-size:0.9rem;font-family:inherit;" placeholder="예: 이마트" />
+      </div>
+      <div style="display:flex;flex-direction:column;">
+        <label style="font-size:0.78rem;color:#555;font-weight:600;margin-bottom:4px;">구매일</label>
+        <input id="edit-date" type="date" style="padding:8px;border:1px solid #e0e0e0;border-radius:8px;font-size:0.9rem;font-family:inherit;" />
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button id="edit-cancel" style="flex:1;padding:10px;border:1px solid #e0e0e0;border-radius:8px;background:#fff;color:#555;font-weight:600;cursor:pointer;font-family:inherit;">취소</button>
+      <button id="edit-save" style="flex:1;padding:10px;border:none;border-radius:8px;background:#0078d4;color:#fff;font-weight:600;cursor:pointer;font-family:inherit;">저장</button>
+    </div>
+  </div>
+</div>
 
 <!-- receipt history overlay -->
 <div id="history-overlay">
@@ -1591,6 +1626,48 @@
     await openHistoryPanel();
   });
 
+  let _editingReceiptId = null;
+
+  function openEditModal(receiptId, merchant, purchaseDate) {
+    _editingReceiptId = receiptId;
+    document.getElementById("edit-merchant").value = merchant;
+    document.getElementById("edit-date").value = purchaseDate;
+    document.getElementById("receipt-edit-overlay").style.display = "flex";
+  }
+
+  document.getElementById("edit-cancel").addEventListener("click", () => {
+    document.getElementById("receipt-edit-overlay").style.display = "none";
+  });
+
+  document.getElementById("edit-save").addEventListener("click", async () => {
+    const merchant = document.getElementById("edit-merchant").value.trim();
+    const date = document.getElementById("edit-date").value;
+    if (!merchant || !date) {
+      alert("업체와 날짜를 입력해주세요.");
+      return;
+    }
+    try {
+      const resp = await fetch(`/grocery/receipt/${_editingReceiptId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          merchant,
+          purchase_date: date,
+          user_id: USER_CODE,
+        }),
+      });
+      const data = await resp.json();
+      if (data.ok) {
+        document.getElementById("receipt-edit-overlay").style.display = "none";
+        await openHistoryPanel();
+      } else {
+        alert("저장 실패: " + (data.reason || ""));
+      }
+    } catch (err) {
+      alert("오류: " + err.message);
+    }
+  });
+
   async function openHistoryPanel() {
     _historyDeleteMode = false;
     _historySelected.clear();
@@ -1680,6 +1757,8 @@
     document.getElementById("weekly-overlay").classList.add("open");
     const content = document.getElementById("weekly-content");
     content.innerHTML = '<p class="week-empty">불러오는 중…</p>';
+    const headerText = document.querySelector(".weekly-title");
+    headerText.textContent = "📅 주간 지출 (불러오는 중…)";
     try {
       const rows = await fetch(`/grocery/history?days=35&user_id=${encodeURIComponent(USER_CODE)}`).then(r => r.json());
       content.innerHTML = "";
@@ -1711,11 +1790,20 @@
       const weeks = [...weekMap.entries()].sort((a, b) => b[0].localeCompare(a[0]));
       const maxTotal = Math.max(...weeks.map(([, v]) => v.total));
 
+      const totalSpent = weeks.reduce((s, [, { total }]) => s + total, 0);
+      const endDate = new Date();
+      const startDate = new Date(endDate);
+      startDate.setDate(startDate.getDate() - 30);
+      const monthLabel = `${startDate.getMonth() + 1}/${startDate.getDate()} ~ ${endDate.getMonth() + 1}/${endDate.getDate()}`;
+
       const fmtDate = s => {
         const d = new Date(s + "T00:00:00");
         return `${d.getMonth() + 1}/${d.getDate()}`;
       };
       const fmtAmt = n => n.toLocaleString("ko-KR") + "원";
+
+      const headerText = document.querySelector(".weekly-title");
+      headerText.textContent = `📅 주간 지출 (${monthLabel}: ${totalSpent.toLocaleString("ko-KR")}원)`;
 
       weeks.forEach(([monday, { total, receipts }], idx) => {
         const endDate = new Date(monday + "T00:00:00");
@@ -1810,6 +1898,16 @@
     row.appendChild(check);
     row.appendChild(icon);
     row.appendChild(body);
+
+    const editBtn = document.createElement("button");
+    editBtn.className = "hrc-edit-btn";
+    editBtn.textContent = "수정";
+    editBtn.addEventListener("click", e => {
+      e.stopPropagation();
+      openEditModal(r.id, r.merchant || "", r.purchase_date || "");
+    });
+    right.appendChild(editBtn);
+
     row.appendChild(right);
 
     const detail = document.createElement("div");
@@ -1827,7 +1925,14 @@
         _loadReceiptDetail(r.id, detail);
       }
       if (card.classList.contains("expanded")) {
-        setTimeout(() => card.scrollIntoView({ behavior: "smooth", block: "nearest" }), 50);
+        const detailEl = card.querySelector(".hrc-detail");
+        setTimeout(() => {
+          detailEl.style.maxHeight = (detailEl.scrollHeight + 20) + "px";
+          card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        }, 50);
+      } else {
+        const detailEl = card.querySelector(".hrc-detail");
+        detailEl.style.maxHeight = "0";
       }
     });
 
@@ -1851,7 +1956,14 @@
           _loadReceiptDetail(r.id, detail);
         }
         if (card.classList.contains("expanded")) {
-          setTimeout(() => card.scrollIntoView({ behavior: "smooth", block: "nearest" }), 50);
+          const detailEl = card.querySelector(".hrc-detail");
+          setTimeout(() => {
+            detailEl.style.maxHeight = (detailEl.scrollHeight + 20) + "px";
+            card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+          }, 50);
+        } else {
+          const detailEl = card.querySelector(".hrc-detail");
+          detailEl.style.maxHeight = "0";
         }
       }
     });
