@@ -222,7 +222,7 @@ def get_recent_groceries(days: int = 7, user_id: str = "") -> list[dict]:
                     ) AS items
                 FROM grocery_receipts r
                 LEFT JOIN grocery_items i ON i.receipt_id = r.id
-                WHERE r.purchase_date >= %s AND NOT r.is_refund AND r.user_id = %s
+                WHERE (r.purchase_date >= %s OR r.purchase_date IS NULL) AND NOT r.is_refund AND r.user_id = %s
                 GROUP BY r.id
                 ORDER BY r.purchase_date DESC, r.id DESC
             """, (cutoff, user_id))
@@ -247,7 +247,7 @@ def list_grocery_receipts(days: int = 30, user_id: str = "") -> list[dict]:
                     COUNT(i.id) FILTER (WHERE NOT i.is_cancelled) AS item_count
                 FROM grocery_receipts r
                 LEFT JOIN grocery_items i ON i.receipt_id = r.id
-                WHERE r.purchase_date >= %s AND r.user_id = %s
+                WHERE (r.purchase_date >= %s OR r.purchase_date IS NULL) AND r.user_id = %s
                 GROUP BY r.id
                 ORDER BY r.purchase_date DESC, r.created_at DESC
             """, (cutoff, user_id))
