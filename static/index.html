@@ -409,10 +409,10 @@
       max-height: 0;
       overflow: hidden;
       background: #fafafa;
-      transition: max-height 0.25s ease;
+      transition: max-height 0.35s ease;
     }
     .hrc.expanded .hrc-detail {
-      max-height: 600px;
+      max-height: 1500px;
       overflow-y: auto;
       border-top: 1px solid #f0f0f0;
       padding: 10px 14px 14px;
@@ -1924,15 +1924,8 @@
       if (!isExpanded && !detail.dataset.loaded) {
         _loadReceiptDetail(r.id, detail);
       }
-      if (card.classList.contains("expanded")) {
-        const detailEl = card.querySelector(".hrc-detail");
-        setTimeout(() => {
-          detailEl.style.maxHeight = (detailEl.scrollHeight + 20) + "px";
-          card.scrollIntoView({ behavior: "smooth", block: "nearest" });
-        }, 50);
-      } else {
-        const detailEl = card.querySelector(".hrc-detail");
-        detailEl.style.maxHeight = "0";
+      if (!isExpanded) {
+        setTimeout(() => card.scrollIntoView({ behavior: "smooth", block: "nearest" }), 50);
       }
     });
 
@@ -1955,15 +1948,8 @@
         if (!isExpanded && !detail.dataset.loaded) {
           _loadReceiptDetail(r.id, detail);
         }
-        if (card.classList.contains("expanded")) {
-          const detailEl = card.querySelector(".hrc-detail");
-          setTimeout(() => {
-            detailEl.style.maxHeight = (detailEl.scrollHeight + 20) + "px";
-            card.scrollIntoView({ behavior: "smooth", block: "nearest" });
-          }, 50);
-        } else {
-          const detailEl = card.querySelector(".hrc-detail");
-          detailEl.style.maxHeight = "0";
+        if (!isExpanded) {
+          setTimeout(() => card.scrollIntoView({ behavior: "smooth", block: "nearest" }), 50);
         }
       }
     });
