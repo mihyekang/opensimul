@@ -327,6 +327,20 @@
       font-family: inherit;
     }
     .history-del-confirm.visible { display: block; }
+    .history-sel-all {
+      display: none;
+      padding: 7px 10px;
+      background: none;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      color: #555;
+      cursor: pointer;
+      font-family: inherit;
+      white-space: nowrap;
+    }
+    .history-sel-all.visible { display: block; }
+    .history-sel-all.all-selected { background: #fee2e2; border-color: #fca5a5; color: #dc2626; }
     .history-close-btn {
       background: none;
       border: none;
@@ -719,6 +733,7 @@
     <span class="history-title">📋 영수증 이력</span>
     <a href="/grocery" class="history-add-btn">＋ 추가</a>
     <button id="history-del-toggle" class="history-del-toggle">🗑 삭제</button>
+    <button id="history-sel-all" class="history-sel-all">전체 선택</button>
     <button id="history-del-confirm" class="history-del-confirm">선택 삭제 (0)</button>
     <button id="history-close-btn" class="history-close-btn" title="닫기">✕</button>
   </div>
@@ -1371,19 +1386,56 @@
     document.getElementById("history-overlay").classList.remove("open");
   });
 
+  function _updateDeleteHeader() {
+    const selAll  = document.getElementById("history-sel-all");
+    const confirm = document.getElementById("history-del-confirm");
+    const list    = document.getElementById("history-list");
+    const total   = list.querySelectorAll(".hrc").length;
+    const checked = _historySelected.size;
+    confirm.textContent = `선택 삭제 (${checked})`;
+    confirm.classList.toggle("visible", checked > 0);
+    selAll.classList.toggle("visible", _historyDeleteMode);
+    const allSelected = total > 0 && checked === total;
+    selAll.textContent = allSelected ? "전체 해제" : "전체 선택";
+    selAll.classList.toggle("all-selected", allSelected);
+  }
+
   document.getElementById("history-del-toggle").addEventListener("click", () => {
     _historyDeleteMode = !_historyDeleteMode;
     _historySelected.clear();
     _historySelectedData.clear();
-    const toggle  = document.getElementById("history-del-toggle");
-    const confirm = document.getElementById("history-del-confirm");
-    const list    = document.getElementById("history-list");
+    const toggle = document.getElementById("history-del-toggle");
+    const list   = document.getElementById("history-list");
     toggle.classList.toggle("active", _historyDeleteMode);
     toggle.textContent = _historyDeleteMode ? "취소" : "🗑 삭제";
-    confirm.classList.remove("visible");
-    confirm.textContent = "선택 삭제 (0)";
     list.classList.toggle("delete-mode", _historyDeleteMode);
     list.querySelectorAll(".hrc").forEach(c => c.classList.remove("checked"));
+    _updateDeleteHeader();
+  });
+
+  document.getElementById("history-sel-all").addEventListener("click", () => {
+    const list  = document.getElementById("history-list");
+    const cards = [...list.querySelectorAll(".hrc")];
+    const total = cards.length;
+    const allSelected = _historySelected.size === total;
+    _historySelected.clear();
+    _historySelectedData.clear();
+    if (!allSelected) {
+      cards.forEach(card => {
+        const id = parseInt(card.dataset.id);
+        _historySelected.add(id);
+        // data-* 속성에서 복원
+        _historySelectedData.set(id, {
+          merchant:      card.dataset.merchant || null,
+          purchase_date: card.dataset.date     || null,
+          total:         card.dataset.total != null ? parseInt(card.dataset.total) : null,
+        });
+        card.classList.add("checked");
+      });
+    } else {
+      cards.forEach(c => c.classList.remove("checked"));
+    }
+    _updateDeleteHeader();
   });
 
   document.getElementById("history-del-confirm").addEventListener("click", async () => {
@@ -1423,6 +1475,8 @@
     const list    = document.getElementById("history-list");
     toggle.classList.remove("active");
     toggle.textContent = "🗑 삭제";
+    document.getElementById("history-sel-all").classList.remove("visible", "all-selected");
+    document.getElementById("history-sel-all").textContent = "전체 선택";
     confirm.classList.remove("visible");
     confirm.textContent = "선택 삭제 (0)";
     list.classList.remove("delete-mode");
@@ -1446,7 +1500,10 @@
 
     const card = document.createElement("div");
     card.className = "hrc";
-    card.dataset.id = r.id;
+    card.dataset.id       = r.id;
+    card.dataset.merchant = r.merchant     || "";
+    card.dataset.date     = r.purchase_date || "";
+    if (r.total != null) card.dataset.total = r.total;
 
     const row = document.createElement("div");
     row.className = "hrc-row";
@@ -1492,6 +1549,16 @@
     card.appendChild(row);
     card.appendChild(detail);
 
+    // 화살표 클릭: 삭제 모드와 무관하게 항상 상세 펼치기/접기
+    arrow.addEventListener("click", e => {
+      e.stopPropagation();
+      const isExpanded = card.classList.contains("expanded");
+      card.classList.toggle("expanded");
+      if (!isExpanded && !detail.dataset.loaded) {
+        _loadReceiptDetail(r.id, detail);
+      }
+    });
+
     row.addEventListener("click", () => {
       if (_historyDeleteMode) {
         const id = parseInt(card.dataset.id);
@@ -1504,9 +1571,7 @@
           _historySelectedData.set(id, { merchant: r.merchant, purchase_date: r.purchase_date, total: r.total });
           card.classList.add("checked");
         }
-        const confirmBtn = document.getElementById("history-del-confirm");
-        confirmBtn.textContent = `선택 삭제 (${_historySelected.size})`;
-        confirmBtn.classList.toggle("visible", _historySelected.size > 0);
+        _updateDeleteHeader();
       } else {
         const isExpanded = card.classList.contains("expanded");
         card.classList.toggle("expanded");
