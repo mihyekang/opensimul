@@ -236,9 +236,10 @@ def get_recent_groceries(days: int = 7, user_id: str = "") -> list[dict]:
             } for r in rows]
 
 
-def list_grocery_receipts(days: int = 30, user_id: str = "") -> list[dict]:
+def list_grocery_receipts(days: int = 30, user_id: str = "", start_date: str = "", end_date: str = "") -> list[dict]:
     """구매 이력 API용 요약 목록."""
-    cutoff = date.today() - timedelta(days=days)
+    from_date = start_date if start_date else (date.today() - timedelta(days=days)).isoformat()
+    to_date = end_date if end_date else date.today().isoformat()
     with _get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("""
@@ -247,10 +248,10 @@ def list_grocery_receipts(days: int = 30, user_id: str = "") -> list[dict]:
                     COUNT(i.id) FILTER (WHERE NOT i.is_cancelled) AS item_count
                 FROM grocery_receipts r
                 LEFT JOIN grocery_items i ON i.receipt_id = r.id
-                WHERE (r.purchase_date >= %s OR r.purchase_date IS NULL) AND r.user_id = %s
+                WHERE (r.purchase_date BETWEEN %s AND %s OR r.purchase_date IS NULL) AND r.user_id = %s
                 GROUP BY r.id
                 ORDER BY r.purchase_date DESC, r.created_at DESC
-            """, (cutoff, user_id))
+            """, (from_date, to_date, user_id))
             return [dict(r) for r in cur.fetchall()]
 
 

@@ -784,6 +784,85 @@
     .week-merchant-name { color: #333; font-weight: 600; }
     .week-empty { text-align: center; padding: 60px 20px; color: #aaa; font-size: 0.88rem; }
 
+    /* weekly date bar */
+    .weekly-date-bar {
+      background: #fff;
+      border-bottom: 1px solid #e0e0e0;
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .weekly-date-label { font-size: 0.78rem; color: #666; font-weight: 600; white-space: nowrap; }
+    .weekly-date-sep { font-size: 0.82rem; color: #aaa; }
+    .weekly-date-bar input[type="date"] {
+      flex: 1;
+      min-width: 0;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      padding: 5px 8px;
+      font-size: 0.8rem;
+      font-family: inherit;
+      outline: none;
+    }
+    .weekly-date-bar input[type="date"]:focus { border-color: #0078d4; }
+    .weekly-apply-btn {
+      padding: 6px 14px;
+      background: #0078d4;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      white-space: nowrap;
+    }
+    .weekly-apply-btn:hover { background: #106ebe; }
+
+    /* merchant proportion bars */
+    .week-merchant-row {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      padding: 5px 0;
+      border-bottom: 1px solid #f5f5f5;
+    }
+    .week-merchant-row:last-child { border-bottom: none; }
+    .week-merchant-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .week-merchant-name {
+      color: #333;
+      font-weight: 600;
+      font-size: 0.8rem;
+      cursor: pointer;
+      text-decoration: underline dotted;
+      text-underline-offset: 2px;
+    }
+    .week-merchant-name:hover { color: #0078d4; }
+    .week-merchant-meta {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .week-merchant-pct { font-size: 0.72rem; color: #aaa; }
+    .week-merchant-amt { font-size: 0.8rem; color: #555; }
+    .week-merchant-bar-bg {
+      height: 4px;
+      background: #f0f2f5;
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .week-merchant-bar-fill {
+      height: 100%;
+      border-radius: 2px;
+      background: linear-gradient(90deg, #0078d4, #40a9ff);
+    }
+
     /* edit buttons */
     .hrc-edit-btn {
       padding: 4px 8px;
@@ -897,6 +976,13 @@
   <div class="weekly-header">
     <span class="weekly-title">📅 주간 지출</span>
     <button id="weekly-close-btn" class="history-close-btn" title="닫기">✕</button>
+  </div>
+  <div class="weekly-date-bar">
+    <span class="weekly-date-label">기간</span>
+    <input type="date" id="weekly-start-date" />
+    <span class="weekly-date-sep">~</span>
+    <input type="date" id="weekly-end-date" />
+    <button id="weekly-apply-btn" class="weekly-apply-btn">조회</button>
   </div>
   <div id="weekly-content" class="weekly-content"></div>
 </div>
@@ -1669,7 +1755,7 @@
     }
   });
 
-  async function openHistoryPanel() {
+  async function openHistoryPanel(filterMerchant = null) {
     _historyDeleteMode = false;
     _historySelected.clear();
     _historySelectedData.clear();
@@ -1693,13 +1779,13 @@
         return;
       }
       rows.forEach(r => list.appendChild(_buildHistoryCard(r)));
-      _renderFilterBar(rows);
+      _renderFilterBar(rows, filterMerchant);
     } catch (err) {
       list.innerHTML = `<p class="history-empty">오류: ${err.message}</p>`;
     }
   }
 
-  function _renderFilterBar(rows) {
+  function _renderFilterBar(rows, initialFilter = null) {
     const bar = document.getElementById("history-filter-bar");
     if (!rows || rows.length === 0) { bar.style.display = "none"; return; }
 
@@ -1743,7 +1829,13 @@
     bar.appendChild(chipsEl);
     bar.appendChild(statEl);
     bar.style.display = "flex";
-    updateStat("전체");
+
+    // 초기 필터 (weekly 패널에서 업체명 클릭 시)
+    if (initialFilter && merchants.includes(initialFilter)) {
+      applyFilter(initialFilter);
+    } else {
+      updateStat("전체");
+    }
   }
 
   document.getElementById("weekly-btn").addEventListener("click", () => {
@@ -1753,25 +1845,54 @@
   document.getElementById("weekly-close-btn").addEventListener("click", () => {
     document.getElementById("weekly-overlay").classList.remove("open");
   });
+  document.getElementById("weekly-apply-btn").addEventListener("click", () => {
+    openWeeklyPanel();
+  });
+
+  function _weeklyDefaultDates() {
+    const end = new Date();
+    const start = new Date();
+    start.setDate(start.getDate() - 30);
+    return {
+      start: start.toISOString().slice(0, 10),
+      end: end.toISOString().slice(0, 10),
+    };
+  }
 
   async function openWeeklyPanel() {
     document.getElementById("weekly-overlay").classList.add("open");
     const content = document.getElementById("weekly-content");
+    const startInput = document.getElementById("weekly-start-date");
+    const endInput   = document.getElementById("weekly-end-date");
+
+    // 기본값 설정 (최초 1회)
+    if (!startInput.value || !endInput.value) {
+      const { start, end } = _weeklyDefaultDates();
+      startInput.value = start;
+      endInput.value   = end;
+    }
+
+    const fromDate = startInput.value;
+    const toDate   = endInput.value;
+
     content.innerHTML = '<p class="week-empty">불러오는 중…</p>';
-    const headerText = document.querySelector(".weekly-title");
-    headerText.textContent = "📅 주간 지출 (불러오는 중…)";
+    const titleEl = document.querySelector(".weekly-title");
+    titleEl.textContent = "📅 주간 지출 (불러오는 중…)";
+
     try {
-      const rows = await fetch(`/grocery/history?days=35&user_id=${encodeURIComponent(USER_CODE)}`).then(r => r.json());
+      const url = `/grocery/history?user_id=${encodeURIComponent(USER_CODE)}&start_date=${fromDate}&end_date=${toDate}`;
+      const rows = await fetch(url).then(r => r.json());
       content.innerHTML = "";
+
       if (!rows || rows.length === 0) {
-        content.innerHTML = '<p class="week-empty">최근 5주간 저장된 영수증이 없어요.<br>영수증 분석기에서 영수증을 추가해보세요 🧾</p>';
+        content.innerHTML = '<p class="week-empty">해당 기간에 저장된 영수증이 없어요.<br>영수증 분석기에서 영수증을 추가해보세요 🧾</p>';
+        titleEl.textContent = "📅 주간 지출";
         return;
       }
 
-      // group by week (Monday-based)
       function weekMonday(dateStr) {
         const d = new Date(dateStr + "T00:00:00");
-        const day = d.getDay(); // 0=Sun
+        const day = d.getDay();
         const diff = day === 0 ? -6 : 1 - day;
         d.setDate(d.getDate() + diff);
         return d.toISOString().slice(0, 10);
@@ -1787,15 +1908,9 @@
         entry.receipts.push(r);
       });
 
-      // sort weeks descending
-      const weeks = [...weekMap.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+      const weeks    = [...weekMap.entries()].sort((a, b) => b[0].localeCompare(a[0]));
       const maxTotal = Math.max(...weeks.map(([, v]) => v.total));
-
       const totalSpent = weeks.reduce((s, [, { total }]) => s + total, 0);
-      const endDate = new Date();
-      const startDate = new Date(endDate);
-      startDate.setDate(startDate.getDate() - 30);
-      const monthLabel = `${startDate.getMonth() + 1}/${startDate.getDate()} ~ ${endDate.getMonth() + 1}/${endDate.getDate()}`;
 
       const fmtDate = s => {
         const d = new Date(s + "T00:00:00");
@@ -1803,24 +1918,22 @@
       };
       const fmtAmt = n => n.toLocaleString("ko-KR") + "원";
 
-      const headerText = document.querySelector(".weekly-title");
-      headerText.textContent = `📅 주간 지출 (${monthLabel}: ${totalSpent.toLocaleString("ko-KR")}원)`;
+      const fromLabel = fmtDate(fromDate);
+      const toLabel   = fmtDate(toDate);
+      titleEl.textContent = `📅 주간 지출 (${fromLabel}~${toLabel}: ${totalSpent.toLocaleString("ko-KR")}원)`;
+
+      const thisMonday = weekMonday(new Date().toISOString().slice(0, 10));
 
       weeks.forEach(([monday, { total, receipts }], idx) => {
-        const endDate = new Date(monday + "T00:00:00");
-        endDate.setDate(endDate.getDate() + 6);
-        const endStr = endDate.toISOString().slice(0, 10);
+        const endDt = new Date(monday + "T00:00:00");
+        endDt.setDate(endDt.getDate() + 6);
+        const endStr = endDt.toISOString().slice(0, 10);
 
-        const now = new Date();
-        const thisMonday = weekMonday(now.toISOString().slice(0, 10));
-
-        // simpler label
         let weekLabel;
-        if (monday === thisMonday) weekLabel = `이번 주 (${fmtDate(monday)} ~ ${fmtDate(endStr)})`;
-        else if (idx === 0 && monday !== thisMonday) weekLabel = `저번 주 (${fmtDate(monday)} ~ ${fmtDate(endStr)})`;
-        else weekLabel = `${fmtDate(monday)} ~ ${fmtDate(endStr)}`;
+        if (monday === thisMonday)           weekLabel = `이번 주 (${fmtDate(monday)} ~ ${fmtDate(endStr)})`;
+        else if (idx === 0)                  weekLabel = `저번 주 (${fmtDate(monday)} ~ ${fmtDate(endStr)})`;
+        else                                 weekLabel = `${fmtDate(monday)} ~ ${fmtDate(endStr)}`;
 
-        // merchant breakdown
         const merchantMap = new Map();
         receipts.forEach(r => {
           const m = r.merchant || "알 수 없음";
@@ -1830,22 +1943,55 @@
 
         const card = document.createElement("div");
         card.className = "week-card";
-        const pct = maxTotal > 0 ? Math.round((total / maxTotal) * 100) : 0;
+        const barPct = maxTotal > 0 ? Math.round((total / maxTotal) * 100) : 0;
 
         card.innerHTML = `
           <div class="week-card-header">
             <span class="week-label">${weekLabel}</span>
             <span class="week-total">${fmtAmt(total)}</span>
           </div>
-          <div class="week-bar-bg"><div class="week-bar-fill" style="width:${pct}%"></div></div>
-          <div class="week-merchants">
-            ${topMerchants.map(([m, t]) => `
-              <div class="week-merchant-row">
-                <span class="week-merchant-name">${m}</span>
-                <span>${fmtAmt(t)}</span>
-              </div>`).join("")}
-          </div>
+          <div class="week-bar-bg"><div class="week-bar-fill" style="width:${barPct}%"></div></div>
+          <div class="week-merchants"></div>
         `;
+        const merchantsEl = card.querySelector(".week-merchants");
+
+        topMerchants.forEach(([m, t]) => {
+          const mPct = total > 0 ? Math.round((t / total) * 100) : 0;
+          const row = document.createElement("div");
+          row.className = "week-merchant-row";
+
+          const top = document.createElement("div");
+          top.className = "week-merchant-top";
+
+          const nameEl = document.createElement("span");
+          nameEl.className = "week-merchant-name";
+          nameEl.textContent = m;
+          nameEl.addEventListener("click", () => {
+            document.getElementById("weekly-overlay").classList.remove("open");
+            openHistoryPanel(m);
+          });
+
+          const metaEl = document.createElement("span");
+          metaEl.className = "week-merchant-meta";
+          metaEl.innerHTML =
+            `<span class="week-merchant-pct">${mPct}%</span>` +
+            `<span class="week-merchant-amt">${fmtAmt(t)}</span>`;
+
+          top.appendChild(nameEl);
+          top.appendChild(metaEl);
+
+          const barBg = document.createElement("div");
+          barBg.className = "week-merchant-bar-bg";
+          const barFill = document.createElement("div");
+          barFill.className = "week-merchant-bar-fill";
+          barFill.style.width = mPct + "%";
+          barBg.appendChild(barFill);
+
+          row.appendChild(top);
+          row.appendChild(barBg);
+          merchantsEl.appendChild(row);
+        });
+
         content.appendChild(card);
       });
     } catch (err) {

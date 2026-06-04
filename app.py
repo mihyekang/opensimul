@@ -441,12 +441,12 @@ async def grocery_save(req: GrocerySaveRequest):
 
 
 @app.get("/grocery/history")
-async def grocery_history(days: int = 30, user_id: str = ""):
+async def grocery_history(days: int = 30, user_id: str = "", start_date: str = "", end_date: str = ""):
     """최근 N일 구매 이력 반환."""
     if not state.db_enabled:
         return []
     loop = asyncio.get_event_loop()
-    rows = await loop.run_in_executor(None, lambda: db.list_grocery_receipts(days, user_id))
+    rows = await loop.run_in_executor(None, lambda: db.list_grocery_receipts(days, user_id, start_date, end_date))
     for r in rows:
         if r.get("purchase_date"):
             r["purchase_date"] = r["purchase_date"].isoformat()
