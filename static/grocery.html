@@ -536,6 +536,37 @@
     .json-apply-btn:hover { background: #005fa3; }
     .json-error { display: none; font-size: 0.75rem; color: #dc2626; margin-bottom: 6px; }
 
+    /* date validation banners */
+    .date-banner {
+      border-radius: 8px;
+      padding: 10px 14px;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 0.82rem;
+      flex-wrap: wrap;
+    }
+    .date-banner.warn  { background: #fff8e1; border: 1px solid #ffe082; color: #7a5c00; }
+    .date-banner.error { background: #fee2e2; border: 1px solid #fca5a5; color: #b91c1c; }
+    .date-banner-text  { flex: 1; line-height: 1.5; min-width: 0; }
+    .date-banner-btns  { display: flex; gap: 6px; flex-shrink: 0; }
+    .date-banner-ok, .date-banner-edit {
+      padding: 5px 12px;
+      border-radius: 6px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      white-space: nowrap;
+    }
+    .date-banner-ok   { background: #fff; border: 1.5px solid currentColor; }
+    .date-banner-ok:hover { opacity: 0.8; }
+    .date-banner.warn  .date-banner-edit { border: none; background: #f59e0b; color: #fff; }
+    .date-banner.error .date-banner-edit { border: none; background: #dc2626; color: #fff; }
+    .date-banner-edit:hover { opacity: 0.85; }
+
     /* mode tabs */
     .mode-tabs {
       display: flex;
@@ -870,7 +901,7 @@
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
 
-        const entry = { result: data.result, filename: file.name, saved: false };
+        const entry = { result: data.result, filename: file.name, saved: false, dateConfirmed: false };
         extractedResults.push(entry);
         const section = buildResultSection(file.name, data, entry);
         resultWrap.appendChild(section);
@@ -921,7 +952,7 @@
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data = await resp.json();
 
-      const entry = { result: data.result, filename: "텍스트 입력", saved: false };
+      const entry = { result: data.result, filename: "텍스트 입력", saved: false, dateConfirmed: false };
       extractedResults.push(entry);
       const section = buildResultSection("텍스트 입력", data, entry);
       resultWrap.appendChild(section);
@@ -947,6 +978,26 @@
 
   // ── bulk save ──
   bulkSaveBtn.addEventListener("click", async () => {
+    const _toSave = extractedResults.filter(e => !e.saved);
+
+    // 날짜 없는 항목 체크
+    const _noDate = _toSave.filter(e => !e.result.purchase_date);
+    if (_noDate.length > 0) {
+      alert(`${_noDate.length}개 영수증에 날짜가 없어요.\n각 영수증의 "입력하기" 버튼을 눌러 날짜를 입력해주세요.`);
+      return;
+    }
+
+    // 1달 이상 과거 확인
+    const _bulkOneMonthAgo = new Date();
+    _bulkOneMonthAgo.setMonth(_bulkOneMonthAgo.getMonth() - 1);
+    const _oldEntries = _toSave.filter(e => !e.dateConfirmed && new Date(e.result.purchase_date + "T00:00:00") < _bulkOneMonthAgo);
+    if (_oldEntries.length > 0) {
+      const _datesList = _oldEntries.map(e => e.result.purchase_date).join(", ");
+      const _ok = confirm(`${_oldEntries.length}개 영수증의 날짜가 1달 이상 전이에요.\n(${_datesList})\n날짜가 모두 맞나요?`);
+      if (!_ok) return;
+      _oldEntries.forEach(e => { e.dateConfirmed = true; });
+    }
+
     bulkSaveBtn.disabled = true;
     bulkSaveBtn.textContent = "저장 중…";
 
@@ -1022,6 +1073,22 @@
       saveBtn.textContent = "💾 이 영수증 저장";
       saveBtn.addEventListener("click", async () => {
         if (entry.saved) return;
+
+        // 날짜 필수 검증
+        if (!entry.result.purchase_date) {
+          alert("날짜는 필수 항목이에요.\n수정 버튼을 눌러 날짜를 입력해주세요.");
+          return;
+        }
+        // 1달 이상 과거 확인
+        const _saveOneMonthAgo = new Date();
+        _saveOneMonthAgo.setMonth(_saveOneMonthAgo.getMonth() - 1);
+        const _saveDate = new Date(entry.result.purchase_date + "T00:00:00");
+        if (_saveDate < _saveOneMonthAgo && !entry.dateConfirmed) {
+          const _ok = confirm(`날짜가 1달 이상 전 (${entry.result.purchase_date})이에요.\n날짜가 맞나요?`);
+          if (!_ok) return;
+          entry.dateConfirmed = true;
+        }
+
         saveBtn.disabled = true;
         saveBtn.textContent = "저장 중…";
         try {
@@ -1137,6 +1204,57 @@
       header.appendChild(merchantSpan);
       header.appendChild(rightSpan);
       card.appendChild(header);
+
+      // date validation banner
+      const _oneMonthAgo = new Date();
+      _oneMonthAgo.setMonth(_oneMonthAgo.getMonth() - 1);
+      if (!r.purchase_date) {
+        const banner = document.createElement("div");
+        banner.className = "date-banner error";
+        const txt = document.createElement("span");
+        txt.className = "date-banner-text";
+        txt.textContent = "⚠ 날짜는 필수 항목이에요. 날짜를 입력해주세요.";
+        const editBtn = document.createElement("button");
+        editBtn.className = "date-banner-edit";
+        editBtn.textContent = "입력하기";
+        editBtn.addEventListener("click", () => {
+          cardWrap.innerHTML = "";
+          const ec = buildEditCard();
+          cardWrap.appendChild(ec);
+          const di = ec.querySelector('input[type="date"]');
+          if (di) { di.focus(); di.scrollIntoView({ behavior: "smooth", block: "center" }); }
+        });
+        banner.appendChild(txt);
+        banner.appendChild(editBtn);
+        card.appendChild(banner);
+      } else {
+        const _pd = new Date(r.purchase_date + "T00:00:00");
+        if (_pd < _oneMonthAgo && !entry.dateConfirmed) {
+          const banner = document.createElement("div");
+          banner.className = "date-banner warn";
+          const txt = document.createElement("span");
+          txt.className = "date-banner-text";
+          txt.textContent = `⚠ 날짜가 1달 이상 전 (${r.purchase_date})이에요. 날짜가 맞나요?`;
+          banner.appendChild(txt);
+          const btns = document.createElement("span");
+          btns.className = "date-banner-btns";
+          const okBtn = document.createElement("button");
+          okBtn.className = "date-banner-ok";
+          okBtn.textContent = "맞아요";
+          okBtn.addEventListener("click", () => { entry.dateConfirmed = true; renderView(); });
+          const editBtn2 = document.createElement("button");
+          editBtn2.className = "date-banner-edit";
+          editBtn2.textContent = "수정";
+          editBtn2.addEventListener("click", () => {
+            cardWrap.innerHTML = "";
+            cardWrap.appendChild(buildEditCard());
+          });
+          btns.appendChild(okBtn);
+          btns.appendChild(editBtn2);
+          banner.appendChild(btns);
+          card.appendChild(banner);
+        }
+      }
 
       // items table
       const table = document.createElement("table");
@@ -1274,8 +1392,10 @@
             amount: isNaN(amtVal) ? null : amtVal,
           };
         });
+        const _prevDate = entry.result.purchase_date;
         entry.result.merchant = merchantInput.value.trim() || r.merchant;
         entry.result.purchase_date = dateInput.value || r.purchase_date;
+        if (entry.result.purchase_date !== _prevDate) entry.dateConfirmed = false;
         entry.result.items = itemsData;
         entry.result.total = itemsData
           .filter(i => i.amount != null && !i.is_cancelled)
