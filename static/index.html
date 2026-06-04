@@ -726,9 +726,24 @@
       padding: 12px 16px;
       display: flex;
       align-items: center;
+      gap: 8px;
       flex-shrink: 0;
     }
     .weekly-title { flex: 1; font-size: 1rem; font-weight: 700; color: #111; }
+    .weekly-export-btn {
+      padding: 5px 11px;
+      background: #f3f4f6;
+      color: #374151;
+      border: 1.5px solid #d1d5db;
+      border-radius: 7px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      white-space: nowrap;
+      transition: all 0.12s;
+    }
+    .weekly-export-btn:hover { background: #e5e7eb; border-color: #9ca3af; }
     .weekly-content {
       flex: 1;
       overflow-y: auto;
@@ -937,6 +952,8 @@
 <div id="weekly-overlay">
   <div class="weekly-header">
     <span class="weekly-title">📅 주간 지출</span>
+    <button id="weekly-export-html-btn" class="weekly-export-btn" title="HTML 파일로 저장">HTML</button>
+    <button id="weekly-export-pdf-btn" class="weekly-export-btn" title="PDF로 저장 (인쇄)">PDF</button>
     <button id="weekly-close-btn" class="history-close-btn" title="닫기">✕</button>
   </div>
   <div class="weekly-date-bar">
@@ -1835,6 +1852,8 @@
     };
   }
 
+  let _weeklyExportData = null;
+
   // 업체별 고정 색상: 알려진 업체는 지정색, 나머지는 이름 해시로 결정
   const _MERCHANT_FIXED = {
     "이마트":  "#f59e0b",
@@ -1917,6 +1936,9 @@
       };
       const fmtAmt = n => n.toLocaleString("ko-KR") + "원";
 
+      // export용 데이터 초기화
+      _weeklyExportData = { fromDate, toDate, totalSpent, fmtDate, weeks: [] };
+
       const fromLabel = fmtDate(fromDate);
       const toLabel   = fmtDate(toDate);
       titleEl.textContent = `📅 주간 지출 (${fromLabel}~${toLabel}: ${totalSpent.toLocaleString("ko-KR")}원)`;
@@ -1998,12 +2020,103 @@
           merchantsEl.appendChild(row);
         });
 
+        // export 데이터 수집
+        _weeklyExportData.weeks.push({
+          weekLabel, total, topMerchants,
+          colorMap: Object.fromEntries(colorMap),
+        });
+
         content.appendChild(card);
       });
     } catch (err) {
       content.innerHTML = `<p class="week-empty">오류: ${err.message}</p>`;
     }
   }
+
+  function _buildWeeklyExportHtml() {
+    if (!_weeklyExportData) return null;
+    const { fromDate, toDate, totalSpent, fmtDate, weeks } = _weeklyExportData;
+    const fmtAmt = n => n.toLocaleString("ko-KR") + "원";
+    const fmtFull = s => {
+      const d = new Date(s + "T00:00:00");
+      return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,"0")}.${String(d.getDate()).padStart(2,"0")}`;
+    };
+
+    const weeksHtml = weeks.map(({ weekLabel, total, topMerchants, colorMap }) => {
+      let acc = 0;
+      const barSegs = topMerchants.map(([m, t], si) => {
+        const rawPct = total > 0 ? (t / total) * 100 : 0;
+        const isLast = si === topMerchants.length - 1;
+        const pct = isLast ? (100 - acc) : Math.round(rawPct);
+        if (!isLast) acc += pct;
+        return `<div style="height:100%;width:${pct}%;background:${colorMap[m]};"></div>`;
+      }).join("");
+
+      const tableRows = topMerchants.map(([m, t]) => {
+        const pct = total > 0 ? Math.round((t / total) * 100) : 0;
+        return `<tr>
+          <td style="padding:6px 8px;border-top:1px solid #f0f0f0;">
+            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${colorMap[m]};margin-right:6px;vertical-align:middle;"></span>${m}
+          </td>
+          <td style="padding:6px 8px;text-align:right;border-top:1px solid #f0f0f0;color:#888;">${pct}%</td>
+          <td style="padding:6px 8px;text-align:right;border-top:1px solid #f0f0f0;font-weight:700;">${fmtAmt(t)}</td>
+        </tr>`;
+      }).join("");
+
+      return `<div style="margin-bottom:20px;border:1.5px solid #e5e7eb;border-radius:12px;padding:16px;">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;">
+          <span style="font-weight:600;color:#555;font-size:13px;">${weekLabel}</span>
+          <span style="font-weight:800;font-size:17px;color:#111;">${fmtAmt(total)}</span>
+        </div>
+        <div style="display:flex;border-radius:6px;overflow:hidden;height:12px;margin-bottom:14px;">${barSegs}</div>
+        <table style="width:100%;border-collapse:collapse;font-size:13.5px;">${tableRows}</table>
+      </div>`;
+    }).join("");
+
+    return `<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>주간 지출 현황 ${fmtFull(fromDate)}~${fmtFull(toDate)}</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Noto Sans KR", "Malgun Gothic", sans-serif; max-width: 640px; margin: 40px auto; padding: 0 24px; color: #111; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: #6b7280; font-size: 13px; margin-bottom: 28px; }
+  .foot { font-size: 11px; color: #aaa; text-align: right; margin-top: 32px; }
+  @media print { body { margin: 16px; } }
+</style>
+</head>
+<body>
+<h1>📅 주간 지출 현황</h1>
+<div class="sub">${fmtFull(fromDate)} ~ ${fmtFull(toDate)} &nbsp;·&nbsp; 합계 <strong>${fmtAmt(totalSpent)}</strong></div>
+${weeksHtml}
+<div class="foot">출력일: ${new Date().toLocaleDateString("ko-KR")}</div>
+</body>
+</html>`;
+  }
+
+  document.getElementById("weekly-export-html-btn").addEventListener("click", () => {
+    const html = _buildWeeklyExportHtml();
+    if (!html) return;
+    const { fromDate, toDate } = _weeklyExportData;
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `주간지출_${fromDate}_${toDate}.html`;
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  document.getElementById("weekly-export-pdf-btn").addEventListener("click", () => {
+    const html = _buildWeeklyExportHtml();
+    if (!html) return;
+    const win = window.open("", "_blank", "width=700,height=900");
+    if (!win) { alert("팝업이 차단되었습니다. 브라우저 설정에서 팝업을 허용해주세요."); return; }
+    win.document.write(html);
+    win.document.close();
+    win.addEventListener("load", () => { win.focus(); win.print(); });
+  });
 
   function _buildHistoryCard(r) {
     const fmtAmt = n => n != null ? Math.abs(n).toLocaleString("ko-KR") + "원" : "—";
