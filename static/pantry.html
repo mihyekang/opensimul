@@ -87,12 +87,16 @@
     td { padding: 12px 14px; border-bottom: 1px solid #f0f0f0; font-size: 0.88rem; vertical-align: middle; }
     tr:last-child td { border-bottom: none; }
     tr:hover td { background: #fafafa; }
-    .qty-cell { font-weight: 600; color: #111; }
+    .qty-cell { font-weight: 600; color: #111; white-space: nowrap; }
+    .qty-sep { font-weight: 400; color: #bbb; margin: 0 1px; }
+    .qty-unit { font-size: 0.75rem; color: #888; }
     .current-low { color: #dc2626; }
-    .action-cell { text-align: right; white-space: nowrap; }
+    .date-cell { font-size: 0.75rem; color: #aaa; white-space: nowrap; }
+    .action-cell { text-align: right; }
+    .action-stack { display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
     .btn-edit, .btn-del {
       border: none; border-radius: 6px; cursor: pointer;
-      font-size: 0.75rem; padding: 4px 10px; margin-left: 4px;
+      font-size: 0.75rem; padding: 4px 10px;
     }
     .btn-edit { background: #e8f0fe; color: #1a56db; }
     .btn-edit:hover { background: #d0e3ff; }
@@ -202,10 +206,10 @@
     <table>
       <thead>
         <tr>
-          <th>품목</th>
-          <th>전체 수량</th>
-          <th>현재 수량</th>
-          <th></th>
+          <th style="width:auto">품목</th>
+          <th style="width:80px">수량</th>
+          <th style="width:52px">등록일</th>
+          <th style="width:52px"></th>
         </tr>
       </thead>
       <tbody id="pantry-body"></tbody>
@@ -220,10 +224,10 @@
     <table>
       <thead>
         <tr>
-          <th>품목</th>
-          <th>전체 수량</th>
-          <th>현재 수량</th>
-          <th></th>
+          <th style="width:auto">품목</th>
+          <th style="width:80px">수량</th>
+          <th style="width:52px">등록일</th>
+          <th style="width:52px"></th>
         </tr>
       </thead>
       <tbody id="history-body"></tbody>
@@ -368,6 +372,12 @@
     } catch (e) { console.error(e); }
   }
 
+  function fmtDate(str) {
+    if (!str) return "-";
+    const d = new Date(str);
+    return `${d.getMonth() + 1}/${String(d.getDate()).padStart(2, "0")}`;
+  }
+
   function renderTable() {
     const tbody    = document.getElementById("pantry-body");
     const histBody = document.getElementById("history-body");
@@ -384,16 +394,20 @@
       stockCard.style.display  = "";
       stockEmpty.style.display = "none";
       for (const item of active) {
-        const unit     = item.unit || "개";
+        const unit     = esc(item.unit || "개");
         const lowStock = item.total_qty > 0 && item.current_qty <= Math.floor(item.total_qty * 0.2);
         const tr = document.createElement("tr");
         tr.innerHTML = `
           <td>${esc(item.raw_name)}</td>
-          <td class="qty-cell">${item.total_qty}${esc(unit)}</td>
-          <td class="qty-cell${lowStock ? " current-low" : ""}">${item.current_qty}${esc(unit)}</td>
+          <td class="qty-cell${lowStock ? " current-low" : ""}">
+            ${item.current_qty}<span class="qty-sep">/</span>${item.total_qty}<span class="qty-unit">${unit}</span>
+          </td>
+          <td class="date-cell">${fmtDate(item.created_at)}</td>
           <td class="action-cell">
-            <button class="btn-edit" data-id="${item.id}">수정</button>
-            <button class="btn-del"  data-id="${item.id}">삭제</button>
+            <div class="action-stack">
+              <button class="btn-edit" data-id="${item.id}">수정</button>
+              <button class="btn-del"  data-id="${item.id}">삭제</button>
+            </div>
           </td>
         `;
         tbody.appendChild(tr);
@@ -410,14 +424,16 @@
       histCard.style.display  = "";
       histEmpty.style.display = "none";
       for (const item of history) {
-        const unit = item.unit || "개";
+        const unit = esc(item.unit || "개");
         const tr = document.createElement("tr");
         tr.innerHTML = `
           <td>${esc(item.raw_name)}</td>
-          <td class="qty-cell">${item.total_qty}${esc(unit)}</td>
-          <td class="qty-cell">0${esc(unit)}</td>
+          <td class="qty-cell">0<span class="qty-sep">/</span>${item.total_qty}<span class="qty-unit">${unit}</span></td>
+          <td class="date-cell">${fmtDate(item.created_at)}</td>
           <td class="action-cell">
-            <button class="btn-del" data-id="${item.id}">삭제</button>
+            <div class="action-stack">
+              <button class="btn-del" data-id="${item.id}">삭제</button>
+            </div>
           </td>
         `;
         histBody.appendChild(tr);
