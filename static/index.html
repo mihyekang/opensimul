@@ -370,6 +370,7 @@
       overflow: hidden;
       box-shadow: 0 1px 3px rgba(0,0,0,.06);
       transition: border-color 0.15s;
+      flex-shrink: 0;   /* prevent flex compression when list overflows */
     }
     .hrc.checked { border-color: #0078d4; background: #f0f7ff; }
     .hrc-row {
