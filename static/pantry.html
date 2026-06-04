@@ -16,7 +16,7 @@
       padding: 24px 16px 48px;
     }
     h1 { font-size: 1.1rem; font-weight: 600; color: #111; margin-bottom: 4px; }
-    .subtitle { font-size: 0.78rem; color: #888; margin-bottom: 20px; }
+    .subtitle { font-size: 0.78rem; color: #888; margin-bottom: 16px; }
 
     .grocery-topbar {
       width: 100%; max-width: 600px;
@@ -25,12 +25,6 @@
     }
     .topbar-right { display: flex; align-items: center; gap: 8px; }
     #user-bar-code { font-size: 0.8rem; color: #555; }
-    #logout-btn {
-      font-size: 0.75rem; padding: 4px 10px;
-      border: 1px solid #ccc; border-radius: 6px;
-      background: #fff; cursor: pointer; color: #555; display: none;
-    }
-    #logout-btn:hover { background: #f0f0f0; }
 
     #g-hamburger-btn {
       background: none; border: none; cursor: pointer;
@@ -52,6 +46,24 @@
     }
     .g-hmenu-item:last-child { border-bottom: none; }
     .g-hmenu-item:hover { background: #f5f6f8; }
+
+    /* 탭 바 */
+    .tab-bar {
+      width: 100%; max-width: 600px;
+      display: flex; gap: 0;
+      background: #fff; border-radius: 12px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+      margin-bottom: 16px; overflow: hidden;
+    }
+    .tab-btn {
+      flex: 1; padding: 11px 0;
+      font-size: 0.88rem; font-weight: 500; color: #888;
+      background: none; border: none; cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .tab-btn.active { color: #0078d4; border-bottom-color: #0078d4; }
+    .tab-btn:hover:not(.active) { color: #555; background: #f9fafb; }
 
     #add-btn {
       width: 100%; max-width: 600px;
@@ -87,21 +99,14 @@
     .btn-del { background: #fee2e2; color: #dc2626; }
     .btn-del:hover { background: #fecaca; }
 
-    #empty-msg {
-      width: 100%; max-width: 600px; text-align: center;
-      padding: 48px 16px; color: #aaa; font-size: 0.88rem; display: none;
-    }
+    /* 이력 탭 흐리게 */
+    #tab-history-panel .qty-cell { color: #bbb; }
+    #tab-history-panel td { color: #999; }
 
-    .section-label {
-      width: 100%; max-width: 600px;
-      font-size: 0.78rem; font-weight: 600; color: #888;
-      margin: 20px 0 8px; letter-spacing: 0.03em;
+    .empty-msg {
+      width: 100%; max-width: 600px; text-align: center;
+      padding: 48px 16px; color: #aaa; font-size: 0.88rem;
     }
-    .pantry-card.history-card {
-      opacity: 0.65;
-    }
-    .pantry-card.history-card td { color: #999; }
-    .pantry-card.history-card .qty-cell { color: #bbb; }
 
     #edit-overlay {
       display: none; position: fixed; inset: 0;
@@ -185,36 +190,46 @@
 <h1>재고 관리</h1>
 <p class="subtitle">영수증 저장 시 자동으로 추가됩니다</p>
 
-<button id="add-btn">+ 직접 추가</button>
-
-<div class="pantry-card">
-  <table>
-    <thead>
-      <tr>
-        <th>품목</th>
-        <th>전체 수량</th>
-        <th>현재 수량</th>
-        <th></th>
-      </tr>
-    </thead>
-    <tbody id="pantry-body"></tbody>
-  </table>
+<div class="tab-bar">
+  <button class="tab-btn active" id="tab-stock-btn">재고 관리</button>
+  <button class="tab-btn" id="tab-history-btn">재고 이력</button>
 </div>
-<div id="empty-msg">재고 항목이 없습니다.<br>영수증을 저장하면 자동으로 추가됩니다.</div>
 
-<p class="section-label" id="history-label" style="display:none">재고 이력</p>
-<div class="pantry-card history-card" id="history-card" style="display:none">
-  <table>
-    <thead>
-      <tr>
-        <th>품목</th>
-        <th>전체 수량</th>
-        <th>현재 수량</th>
-        <th></th>
-      </tr>
-    </thead>
-    <tbody id="history-body"></tbody>
-  </table>
+<!-- 재고 관리 탭 -->
+<div id="tab-stock-panel">
+  <button id="add-btn">+ 직접 추가</button>
+  <div class="pantry-card" id="stock-card">
+    <table>
+      <thead>
+        <tr>
+          <th>품목</th>
+          <th>전체 수량</th>
+          <th>현재 수량</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="pantry-body"></tbody>
+    </table>
+  </div>
+  <div class="empty-msg" id="stock-empty" style="display:none">재고 항목이 없습니다.<br>영수증을 저장하면 자동으로 추가됩니다.</div>
+</div>
+
+<!-- 재고 이력 탭 -->
+<div id="tab-history-panel" style="display:none; width:100%; max-width:600px;">
+  <div class="pantry-card" id="history-card">
+    <table>
+      <thead>
+        <tr>
+          <th>품목</th>
+          <th>전체 수량</th>
+          <th>현재 수량</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="history-body"></tbody>
+    </table>
+  </div>
+  <div class="empty-msg" id="history-empty" style="display:none">소진된 항목이 없습니다.</div>
 </div>
 
 <div id="edit-overlay">
@@ -264,6 +279,7 @@
   let USER_ID   = localStorage.getItem("grocery_user_code") || "";
   let authMode  = "login";
   let editingId = null;
+  let activeTab = "stock";
 
   function showAuth() { document.getElementById("auth-overlay").classList.add("visible"); }
   function hideAuth() { document.getElementById("auth-overlay").classList.remove("visible"); }
@@ -272,6 +288,19 @@
     document.getElementById("user-bar-code").textContent = USER_ID ? `👤 ${USER_ID}` : "";
   }
 
+  // 탭 전환
+  document.getElementById("tab-stock-btn").addEventListener("click", () => switchTab("stock"));
+  document.getElementById("tab-history-btn").addEventListener("click", () => switchTab("history"));
+
+  function switchTab(tab) {
+    activeTab = tab;
+    document.getElementById("tab-stock-btn").classList.toggle("active", tab === "stock");
+    document.getElementById("tab-history-btn").classList.toggle("active", tab === "history");
+    document.getElementById("tab-stock-panel").style.display   = tab === "stock"   ? "" : "none";
+    document.getElementById("tab-history-panel").style.display = tab === "history" ? "" : "none";
+  }
+
+  // 인증 탭
   document.getElementById("tab-login").addEventListener("click", () => {
     authMode = "login";
     document.getElementById("tab-login").classList.add("active");
@@ -319,7 +348,6 @@
     btn.disabled = false;
   }
 
-
   const _hamBtn  = document.getElementById("g-hamburger-btn");
   const _hamMenu = document.getElementById("g-hamburger-menu");
   _hamBtn.addEventListener("click", e => { e.stopPropagation(); _hamMenu.classList.toggle("open"); });
@@ -341,31 +369,20 @@
   }
 
   function renderTable() {
-    const tbody       = document.getElementById("pantry-body");
-    const histBody    = document.getElementById("history-body");
-    const empty       = document.getElementById("empty-msg");
-    const card        = document.querySelector(".pantry-card");
-    const histCard    = document.getElementById("history-card");
-    const histLabel   = document.getElementById("history-label");
-
+    const tbody    = document.getElementById("pantry-body");
+    const histBody = document.getElementById("history-body");
     tbody.innerHTML    = "";
     histBody.innerHTML = "";
 
     const active  = _items.filter(i => i.current_qty > 0);
     const history = _items.filter(i => i.current_qty === 0);
 
-    if (!active.length && !history.length) {
-      empty.style.display    = "block";
-      card.style.display     = "none";
-      histCard.style.display = "none";
-      histLabel.style.display = "none";
-      return;
-    }
-
-    empty.style.display = "none";
-
+    // 재고 관리 탭
+    const stockCard  = document.getElementById("stock-card");
+    const stockEmpty = document.getElementById("stock-empty");
     if (active.length) {
-      card.style.display = "";
+      stockCard.style.display  = "";
+      stockEmpty.style.display = "none";
       for (const item of active) {
         const unit     = item.unit || "개";
         const lowStock = item.total_qty > 0 && item.current_qty <= Math.floor(item.total_qty * 0.2);
@@ -382,12 +399,16 @@
         tbody.appendChild(tr);
       }
     } else {
-      card.style.display = "none";
+      stockCard.style.display  = "none";
+      stockEmpty.style.display = "";
     }
 
+    // 재고 이력 탭
+    const histCard  = document.getElementById("history-card");
+    const histEmpty = document.getElementById("history-empty");
     if (history.length) {
       histCard.style.display  = "";
-      histLabel.style.display = "";
+      histEmpty.style.display = "none";
       for (const item of history) {
         const unit = item.unit || "개";
         const tr = document.createElement("tr");
@@ -403,7 +424,7 @@
       }
     } else {
       histCard.style.display  = "none";
-      histLabel.style.display = "none";
+      histEmpty.style.display = "";
     }
 
     tbody.querySelectorAll(".btn-edit").forEach(b => b.addEventListener("click", () => openEdit(+b.dataset.id)));
