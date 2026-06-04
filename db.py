@@ -88,6 +88,20 @@ def init_db() -> None:
                     created_at    TIMESTAMPTZ DEFAULT NOW()
                 )
             """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS pantry_items (
+                    id          SERIAL PRIMARY KEY,
+                    user_id     TEXT NOT NULL DEFAULT \'\',
+                    raw_name    TEXT NOT NULL,
+                    total_qty   INTEGER NOT NULL DEFAULT 0,
+                    current_qty INTEGER NOT NULL DEFAULT 0,
+                    unit        TEXT DEFAULT \'\',
+                    created_at  TIMESTAMPTZ DEFAULT NOW(),
+                    updated_at  TIMESTAMPTZ DEFAULT NOW()
+                )
+            """)
+            cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_pantry_user_name ON pantry_items(user_id, raw_name)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_pantry_user ON pantry_items(user_id)")
         conn.commit()
 
 
@@ -428,6 +442,84 @@ def list_analyses(limit: int = 50) -> list[dict]:
             """, (limit,))
             return [dict(r) for r in cur.fetchall()]
 
+
+
+
+# ── pantry ─────────────────────────────────────────────────────────────────────
+
+def upsert_pantry_from_purchase(user_id: str, raw_name: str, qty: int, unit: str) -> None:
+    """영수증 저장 시 pantry 재고에 추가 (없으면 신규 생성)."""
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO pantry_items (user_id, raw_name, total_qty, current_qty, unit)
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (user_id, raw_name)
+                DO UPDATE SET
+                    total_qty   = %s,
+                    current_qty = pantry_items.current_qty + %s,
+                    unit        = CASE WHEN %s != \'\' THEN %s ELSE pantry_items.unit END,
+                    updated_at  = NOW()
+            """, (user_id, raw_name, qty, qty, unit, qty, qty, unit, unit))
+        conn.commit()
+
+
+def list_pantry(user_id: str) -> list[dict]:
+    with _get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT id, raw_name, total_qty, current_qty, unit, updated_at
+                FROM pantry_items WHERE user_id = %s
+                ORDER BY updated_at DESC
+            """, (user_id,))
+            return [{
+                **dict(r),
+                "updated_at": r["updated_at"].isoformat() if r["updated_at"] else None,
+            } for r in cur.fetchall()]
+
+
+def add_pantry_item(user_id: str, raw_name: str, total_qty: int, current_qty: int, unit: str) -> dict:
+    with _get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                INSERT INTO pantry_items (user_id, raw_name, total_qty, current_qty, unit)
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (user_id, raw_name)
+                DO UPDATE SET total_qty = %s, current_qty = %s, unit = %s, updated_at = NOW()
+                RETURNING id, raw_name, total_qty, current_qty, unit, updated_at
+            """, (user_id, raw_name, total_qty, current_qty, unit, total_qty, current_qty, unit))
+            row = dict(cur.fetchone())
+        conn.commit()
+    if row.get("updated_at"):
+        row["updated_at"] = row["updated_at"].isoformat()
+    return row
+
+
+def update_pantry_item(item_id: int, user_id: str, raw_name: str | None, total_qty: int | None, current_qty: int | None, unit: str | None) -> bool:
+    updates, params = [], []
+    if raw_name   is not None: updates.append("raw_name = %s");    params.append(raw_name)
+    if total_qty  is not None: updates.append("total_qty = %s");   params.append(total_qty)
+    if current_qty is not None: updates.append("current_qty = %s"); params.append(current_qty)
+    if unit       is not None: updates.append("unit = %s");        params.append(unit)
+    if not updates:
+        return False
+    updates.append("updated_at = NOW()")
+    params.extend([item_id, user_id])
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"UPDATE pantry_items SET {', '.join(updates)} WHERE id = %s AND user_id = %s", params)
+            updated = cur.rowcount > 0
+        conn.commit()
+    return updated
+
+
+def delete_pantry_item(item_id: int, user_id: str) -> bool:
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM pantry_items WHERE id = %s AND user_id = %s", (item_id, user_id))
+            deleted = cur.rowcount > 0
+        conn.commit()
+    return deleted
 
 # ── user auth ──────────────────────────────────────────────────────────────────
 

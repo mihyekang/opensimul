@@ -95,7 +95,24 @@ TOOLS = [
                 "required": []
             }
         }
-    }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_pantry_items",
+            "description": "냉장고/팬트리 재고 현황을 조회합니다. 특정 재료가 얼마나 남았는지, 재고 현황을 확인할 때 사용합니다.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "keyword": {
+                        "type": "string",
+                        "description": "조회할 품목 키워드 (예: 계란, 우유). 비워두면 전체 재고."
+                    }
+                },
+                "required": []
+            }
+        }
+    },
 ]
 
 
@@ -114,6 +131,8 @@ def execute_tool(name: str, args: dict, user_id: str) -> Any:
                 args.get("end_date") or date.today().isoformat(),
                 user_id,
             )
+        if name == "get_pantry_items":
+            return _get_pantry_items(args.get("keyword", ""), user_id)
         return {"error": f"Unknown tool: {name}"}
     except Exception as e:
         logger.error("Tool execution error [%s]: %s", name, e)
@@ -192,4 +211,24 @@ def _get_spending_summary(start_date: str, end_date: str, user_id: str) -> dict:
         "total_spent": total,
         "receipt_count": len(rows),
         "by_merchant": [{"merchant": m, "total": t} for m, t in sorted_merchants],
+    }
+
+
+def _get_pantry_items(keyword: str, user_id: str) -> dict:
+    rows = db.list_pantry(user_id)
+    if keyword:
+        rows = [r for r in rows if keyword.lower() in r["raw_name"].lower()]
+    return {
+        "keyword": keyword or "(전체)",
+        "item_count": len(rows),
+        "items": [
+            {
+                "name": r["raw_name"],
+                "total_qty": r["total_qty"],
+                "current_qty": r["current_qty"],
+                "unit": r["unit"] or "개",
+                "last_updated": r.get("updated_at", ""),
+            }
+            for r in rows
+        ],
     }
