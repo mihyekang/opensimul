@@ -122,6 +122,7 @@ class GrocerySaveRequest(BaseModel):
 class GroceryUpdateRequest(BaseModel):
     merchant: str | None = None
     purchase_date: str | None = None
+    total: int | None = None
     user_id: str = ""
 
 
@@ -518,7 +519,7 @@ async def grocery_update_receipt(receipt_id: int, req: GroceryUpdateRequest):
         return {"ok": False, "reason": "db_not_enabled"}
     loop = asyncio.get_event_loop()
     updated = await loop.run_in_executor(
-        None, lambda: db.update_grocery_receipt_meta(receipt_id, req.merchant, req.purchase_date, req.user_id)
+        None, lambda: db.update_grocery_receipt_meta(receipt_id, req.merchant, req.purchase_date, req.user_id, req.total)
     )
     return {"ok": updated, "reason": None if updated else "not_found"}
 

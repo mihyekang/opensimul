@@ -1813,11 +1813,15 @@
       const list = document.getElementById("edit-items-list");
       const rows = [...list.querySelectorAll(".edit-item-row")];
 
-      // 1. 메타 수정
+      // 1. 메타 수정 (합계는 남은 품목 금액 합산)
+      const newTotal = rows.reduce((sum, row) => {
+        const amt = parseInt(row.querySelector(".edit-item-amount").value) || 0;
+        return sum + (amt > 0 ? amt : 0);
+      }, 0);
       await fetch(`/grocery/receipt/${_editingReceiptId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ merchant, purchase_date: date, user_id: USER_CODE }),
+        body: JSON.stringify({ merchant, purchase_date: date, total: newTotal || null, user_id: USER_CODE }),
       });
 
       // 2. 삭제된 품목

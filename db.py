@@ -274,7 +274,7 @@ def get_grocery_receipt_detail(receipt_id: int, user_id: str) -> dict | None:
             if result.get("created_at"):
                 result["created_at"] = result["created_at"].isoformat()
             cur.execute("""
-                SELECT raw_name, qty, unit_price, amount, is_cancelled
+                SELECT id, raw_name, qty, unit_price, amount, is_cancelled
                 FROM grocery_items WHERE receipt_id = %s ORDER BY id
             """, (receipt_id,))
             result["items"] = [dict(r) for r in cur.fetchall()]
@@ -349,7 +349,7 @@ def update_grocery_item(item_id: int, raw_name: str | None, qty: int | None, uni
     return updated
 
 
-def update_grocery_receipt_meta(receipt_id: int, merchant: str | None, purchase_date: str | None, user_id: str) -> bool:
+def update_grocery_receipt_meta(receipt_id: int, merchant: str | None, purchase_date: str | None, user_id: str, total: int | None = None) -> bool:
     """영수증 메타데이터 수정. 소유자만 가능. True if updated."""
     with _get_conn() as conn:
         with conn.cursor() as cur:
@@ -361,6 +361,9 @@ def update_grocery_receipt_meta(receipt_id: int, merchant: str | None, purchase_
             if purchase_date is not None:
                 updates.append("purchase_date = %s")
                 params.append(purchase_date)
+            if total is not None:
+                updates.append("total = %s")
+                params.append(total)
             if not updates:
                 return False
             params.extend([receipt_id, user_id])
