@@ -1631,6 +1631,7 @@
 
   document.getElementById("history-close-btn").addEventListener("click", () => {
     document.getElementById("history-overlay").classList.remove("open");
+    document.querySelector(".history-title").textContent = "📋 영수증 이력";
   });
 
   function _updateDeleteHeader() {
@@ -1755,13 +1756,14 @@
     }
   });
 
-  async function openHistoryPanel(filterMerchant = null) {
+  async function openHistoryPanel(filterMerchant = null, startDate = null, endDate = null) {
     _historyDeleteMode = false;
     _historySelected.clear();
     _historySelectedData.clear();
     const toggle  = document.getElementById("history-del-toggle");
     const confirm = document.getElementById("history-del-confirm");
     const list    = document.getElementById("history-list");
+    const titleEl = document.querySelector(".history-title");
     toggle.classList.remove("active");
     toggle.textContent = "🗑 삭제";
     document.getElementById("history-sel-all").classList.remove("visible", "all-selected");
@@ -1771,8 +1773,20 @@
     list.classList.remove("delete-mode");
     document.getElementById("history-overlay").classList.add("open");
     list.innerHTML = '<p class="history-empty">불러오는 중…</p>';
+
+    // 날짜 범위가 주어지면 해당 기간 영수증만 조회, 없으면 전체(365일)
+    let url;
+    if (startDate && endDate) {
+      url = `/grocery/history?start_date=${startDate}&end_date=${endDate}&user_id=${encodeURIComponent(USER_CODE)}`;
+      const fmtD = s => { const d = new Date(s + "T00:00:00"); return `${d.getMonth()+1}/${d.getDate()}`; };
+      titleEl.textContent = `📋 영수증 이력 (${fmtD(startDate)}~${fmtD(endDate)})`;
+    } else {
+      url = `/grocery/history?days=365&user_id=${encodeURIComponent(USER_CODE)}`;
+      titleEl.textContent = "📋 영수증 이력";
+    }
+
     try {
-      const rows = await fetch(`/grocery/history?days=365&user_id=${encodeURIComponent(USER_CODE)}`).then(r => r.json());
+      const rows = await fetch(url).then(r => r.json());
       list.innerHTML = "";
       if (!rows || rows.length === 0) {
         list.innerHTML = '<p class="history-empty">저장된 영수증이 없어요.<br>＋ 추가 버튼으로 영수증을 올려보세요 🧾</p>';
@@ -1968,7 +1982,7 @@
           nameEl.textContent = m;
           nameEl.addEventListener("click", () => {
             document.getElementById("weekly-overlay").classList.remove("open");
-            openHistoryPanel(m);
+            openHistoryPanel(m, fromDate, toDate);
           });
 
           const metaEl = document.createElement("span");

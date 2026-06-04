@@ -240,15 +240,17 @@ def list_grocery_receipts(days: int = 30, user_id: str = "", start_date: str = "
     """구매 이력 API용 요약 목록."""
     from_date = start_date if start_date else (date.today() - timedelta(days=days)).isoformat()
     to_date = end_date if end_date else date.today().isoformat()
+    # start_date 명시 시 날짜 없는 영수증 제외 (기간 필터 엄격 적용)
+    null_cond = "" if start_date else "OR r.purchase_date IS NULL"
     with _get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("""
+            cur.execute(f"""
                 SELECT
                     r.id, r.merchant, r.purchase_date, r.total, r.is_refund, r.created_at,
                     COUNT(i.id) FILTER (WHERE NOT i.is_cancelled) AS item_count
                 FROM grocery_receipts r
                 LEFT JOIN grocery_items i ON i.receipt_id = r.id
-                WHERE (r.purchase_date BETWEEN %s AND %s OR r.purchase_date IS NULL) AND r.user_id = %s
+                WHERE (r.purchase_date BETWEEN %s AND %s {null_cond}) AND r.user_id = %s
                 GROUP BY r.id
                 ORDER BY r.purchase_date DESC, r.created_at DESC
             """, (from_date, to_date, user_id))
