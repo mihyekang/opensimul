@@ -820,6 +820,20 @@
     .week-merchant-amt { font-size: 0.8rem; color: #555; white-space: nowrap; }
 
     /* edit buttons */
+    .hrc-del-btn {
+      padding: 4px 10px;
+      background: none;
+      border: 1.5px solid #fca5a5;
+      border-radius: 6px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: #dc2626;
+      cursor: pointer;
+      font-family: inherit;
+      white-space: nowrap;
+      transition: all 0.12s;
+    }
+    .hrc-del-btn:hover { background: #fee2e2; }
     .hrc-edit-btn {
       padding: 4px 8px;
       background: none;
@@ -2136,6 +2150,25 @@ ${weeksHtml}
       openEditModal(r.id, r.merchant || "", r.purchase_date || "");
     });
     right.appendChild(editBtn);
+
+    const delBtn = document.createElement("button");
+    delBtn.className = "hrc-del-btn";
+    delBtn.textContent = "삭제";
+    delBtn.addEventListener("click", async e => {
+      e.stopPropagation();
+      const label = `${r.merchant || "알 수 없음"} · ${r.purchase_date || "날짜 미상"}`;
+      if (!confirm(`이 영수증을 삭제할까요?\n${label}`)) return;
+      const resp = await fetch(
+        `/grocery/receipt/${r.id}?user_id=${encodeURIComponent(USER_CODE)}`,
+        { method: "DELETE" }
+      );
+      if (resp.ok) {
+        card.remove();
+      } else {
+        alert("삭제에 실패했습니다.");
+      }
+    });
+    right.appendChild(delBtn);
 
     row.appendChild(right);
 

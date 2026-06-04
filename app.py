@@ -146,8 +146,16 @@ def _build_purchase_summary(rows: list[dict]) -> str:
     """최근 구매 이력을 챗봇 시스템 프롬프트용 컴팩트 텍스트로 변환."""
     if not rows:
         return ""
+    # 중복 제거: 같은 업체·날짜·금액 조합은 1건만 포함
+    seen: set = set()
+    deduped = []
+    for r in rows:
+        key = (r.get("merchant"), r.get("purchase_date"), r.get("total"))
+        if key not in seen:
+            seen.add(key)
+            deduped.append(r)
     lines = ["[최근 구매 내역]"]
-    for r in rows[:10]:
+    for r in deduped[:10]:
         merchant = r.get("merchant") or "알 수 없음"
         pdate = r.get("purchase_date") or ""
         total = r.get("total")
