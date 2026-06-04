@@ -988,6 +988,13 @@
     <button id="history-del-confirm" class="history-del-confirm">선택 삭제 (0)</button>
     <button id="history-close-btn" class="history-close-btn" title="닫기">✕</button>
   </div>
+  <div class="weekly-date-bar" id="history-date-bar">
+    <span class="weekly-date-label">기간</span>
+    <input type="date" id="history-start-date" />
+    <span class="weekly-date-sep">~</span>
+    <input type="date" id="history-end-date" />
+    <button id="history-apply-btn" class="weekly-apply-btn">조회</button>
+  </div>
   <div id="history-filter-bar" class="history-filter-bar" style="display:none"></div>
   <div id="history-list" class="history-list"></div>
 </div>
@@ -1145,10 +1152,26 @@
     window.location.href = "/grocery";
   });
 
+  // history 날짜 바 초기값
+  (function() {
+    const today = new Date().toISOString().slice(0, 10);
+    const ago30 = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+    document.getElementById("history-start-date").value = ago30;
+    document.getElementById("history-end-date").value   = today;
+  })();
+
+  document.getElementById("history-apply-btn").addEventListener("click", () => {
+    const s = document.getElementById("history-start-date").value;
+    const e = document.getElementById("history-end-date").value;
+    if (s && e) openHistoryPanel(null, s, e);
+  });
+
   document.getElementById("history-btn").addEventListener("click", e => {
     e.stopPropagation();
     closeAllPanels();
-    openHistoryPanel();
+    const s = document.getElementById("history-start-date").value;
+    const en = document.getElementById("history-end-date").value;
+    openHistoryPanel(null, s || null, en || null);
   });
 
   // 패널 내부 클릭은 전파 차단
