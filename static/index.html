@@ -820,6 +820,43 @@
     .week-merchant-amt { font-size: 0.8rem; color: #555; white-space: nowrap; }
 
     /* edit buttons */
+    /* ── receipt edit modal ── */
+    .edit-modal { background:#fff; border-radius:18px; padding:22px; width:min(94vw,500px); box-shadow:0 8px 32px rgba(0,0,0,.18); }
+    .edit-modal-title { font-size:1rem; font-weight:700; color:#111; margin-bottom:14px; }
+    .edit-meta-section { display:flex; gap:10px; margin-bottom:14px; }
+    .edit-field { display:flex; flex-direction:column; flex:1; }
+    .edit-label { font-size:0.75rem; color:#555; font-weight:700; margin-bottom:4px; }
+    .edit-input { padding:8px; border:1px solid #e0e0e0; border-radius:8px; font-size:0.88rem; font-family:inherit; outline:none; }
+    .edit-input:focus { border-color:#0078d4; }
+    .edit-items-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
+    .edit-items-hint { font-size:0.72rem; color:#aaa; }
+    .edit-items-list { display:flex; flex-direction:column; gap:5px; margin-bottom:8px; max-height:300px; overflow-y:auto; }
+    .edit-item-row { display:grid; grid-template-columns:30px 1fr 52px 80px; gap:5px; align-items:center; }
+    .edit-item-del {
+      width:28px; height:28px; border-radius:50%; border:1.5px solid #fca5a5;
+      background:none; color:#dc2626; font-size:1.1rem; font-weight:700;
+      cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; line-height:1;
+    }
+    .edit-item-del:hover { background:#fee2e2; }
+    .edit-item-name, .edit-item-qty, .edit-item-amount {
+      padding:6px 7px; border:1px solid #e5e7eb; border-radius:6px;
+      font-size:0.82rem; font-family:inherit; outline:none; width:100%;
+    }
+    .edit-item-qty   { text-align:center; }
+    .edit-item-amount { text-align:right; }
+    .edit-item-name:focus, .edit-item-qty:focus, .edit-item-amount:focus { border-color:#0078d4; }
+    .edit-item-row.deleted { opacity:0.35; pointer-events:none; }
+    .edit-add-item-btn {
+      width:100%; padding:8px; border:1.5px dashed #0078d4; border-radius:8px;
+      background:none; color:#0078d4; font-size:0.82rem; font-weight:600;
+      cursor:pointer; font-family:inherit; margin-bottom:14px;
+    }
+    .edit-add-item-btn:hover { background:#e8f3fc; }
+    .edit-actions { display:flex; gap:8px; }
+    .edit-cancel-btn { flex:1; padding:10px; border:1px solid #e0e0e0; border-radius:8px; background:#fff; color:#555; font-weight:600; cursor:pointer; font-family:inherit; }
+    .edit-save-btn { flex:2; padding:10px; border:none; border-radius:8px; background:#0078d4; color:#fff; font-weight:600; cursor:pointer; font-family:inherit; }
+    .edit-save-btn:hover { background:#106ebe; }
+
     .hrc-del-btn {
       padding: 4px 10px;
       background: none;
@@ -896,22 +933,28 @@
 </footer>
 
 <!-- receipt edit modal -->
-<div id="receipt-edit-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:2000;align-items:center;justify-content:center;">
-  <div style="background:#fff;border-radius:18px;padding:24px;width:min(90vw,360px);box-shadow:0 8px 32px rgba(0,0,0,.18);">
-    <p style="font-size:1rem;font-weight:700;color:#111;margin-bottom:16px;">🔧 영수증 수정</p>
-    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px;">
-      <div style="display:flex;flex-direction:column;">
-        <label style="font-size:0.78rem;color:#555;font-weight:600;margin-bottom:4px;">업체</label>
-        <input id="edit-merchant" type="text" style="padding:8px;border:1px solid #e0e0e0;border-radius:8px;font-size:0.9rem;font-family:inherit;" placeholder="예: 이마트" />
+<div id="receipt-edit-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:2000;align-items:flex-start;justify-content:center;overflow-y:auto;padding:24px 0;">
+  <div class="edit-modal">
+    <p class="edit-modal-title">영수증 수정</p>
+    <div class="edit-meta-section">
+      <div class="edit-field">
+        <label class="edit-label">업체</label>
+        <input id="edit-merchant" type="text" class="edit-input" placeholder="예: 이마트" />
       </div>
-      <div style="display:flex;flex-direction:column;">
-        <label style="font-size:0.78rem;color:#555;font-weight:600;margin-bottom:4px;">구매일</label>
-        <input id="edit-date" type="date" style="padding:8px;border:1px solid #e0e0e0;border-radius:8px;font-size:0.9rem;font-family:inherit;" />
+      <div class="edit-field">
+        <label class="edit-label">구매일</label>
+        <input id="edit-date" type="date" class="edit-input" />
       </div>
     </div>
-    <div style="display:flex;gap:8px;">
-      <button id="edit-cancel" style="flex:1;padding:10px;border:1px solid #e0e0e0;border-radius:8px;background:#fff;color:#555;font-weight:600;cursor:pointer;font-family:inherit;">취소</button>
-      <button id="edit-save" style="flex:1;padding:10px;border:none;border-radius:8px;background:#0078d4;color:#fff;font-weight:600;cursor:pointer;font-family:inherit;">저장</button>
+    <div class="edit-items-header">
+      <span class="edit-label">구매 항목</span>
+      <span class="edit-items-hint">품목명 · 수량 · 금액</span>
+    </div>
+    <div id="edit-items-list" class="edit-items-list"></div>
+    <button id="edit-add-item" class="edit-add-item-btn">+ 항목 추가</button>
+    <div class="edit-actions">
+      <button id="edit-cancel" class="edit-cancel-btn">취소</button>
+      <button id="edit-save" class="edit-save-btn">저장</button>
     </div>
   </div>
 </div>
@@ -1666,12 +1709,78 @@
 
   let _editingReceiptId = null;
 
-  function openEditModal(receiptId, merchant, purchaseDate) {
+  // ── edit modal state ──
+  let _editOriginalItems = [];  // [{id, raw_name, qty, unit_price, amount}]
+  let _editDeletedIds   = new Set();
+  let _editNewCounter   = 0;
+
+  function _makeEditItemRow(item) {
+    const row = document.createElement("div");
+    row.className = "edit-item-row";
+    row.dataset.itemId = item.id ?? `new-${++_editNewCounter}`;
+
+    const del = document.createElement("button");
+    del.className = "edit-item-del";
+    del.textContent = "−";
+    del.title = "항목 삭제";
+    del.addEventListener("click", () => {
+      const id = row.dataset.itemId;
+      if (!String(id).startsWith("new-")) _editDeletedIds.add(Number(id));
+      row.remove();
+    });
+
+    const name = document.createElement("input");
+    name.className = "edit-item-name";
+    name.type = "text";
+    name.value = item.raw_name || "";
+    name.placeholder = "품목명";
+
+    const qty = document.createElement("input");
+    qty.className = "edit-item-qty";
+    qty.type = "number";
+    qty.min = "1";
+    qty.value = item.qty ?? 1;
+    qty.placeholder = "수량";
+
+    const amt = document.createElement("input");
+    amt.className = "edit-item-amount";
+    amt.type = "number";
+    amt.value = item.amount ?? "";
+    amt.placeholder = "금액";
+
+    row.appendChild(del);
+    row.appendChild(name);
+    row.appendChild(qty);
+    row.appendChild(amt);
+    return row;
+  }
+
+  async function openEditModal(receiptId, merchant, purchaseDate) {
     _editingReceiptId = receiptId;
+    _editDeletedIds.clear();
+    _editNewCounter = 0;
     document.getElementById("edit-merchant").value = merchant;
     document.getElementById("edit-date").value = purchaseDate;
+
+    const list = document.getElementById("edit-items-list");
+    list.innerHTML = '<p style="font-size:0.8rem;color:#aaa;text-align:center;padding:12px;">불러오는 중…</p>';
     document.getElementById("receipt-edit-overlay").style.display = "flex";
+
+    try {
+      const detail = await fetch(`/grocery/receipt/${receiptId}?user_id=${encodeURIComponent(USER_CODE)}`).then(r => r.json());
+      _editOriginalItems = detail.items || [];
+      list.innerHTML = "";
+      _editOriginalItems.forEach(item => list.appendChild(_makeEditItemRow(item)));
+    } catch {
+      list.innerHTML = '<p style="font-size:0.8rem;color:#dc2626;text-align:center;padding:12px;">항목 로드 실패</p>';
+    }
   }
+
+  document.getElementById("edit-add-item").addEventListener("click", () => {
+    document.getElementById("edit-items-list").appendChild(
+      _makeEditItemRow({ raw_name: "", qty: 1, amount: null })
+    );
+  });
 
   document.getElementById("edit-cancel").addEventListener("click", () => {
     document.getElementById("receipt-edit-overlay").style.display = "none";
@@ -1679,30 +1788,59 @@
 
   document.getElementById("edit-save").addEventListener("click", async () => {
     const merchant = document.getElementById("edit-merchant").value.trim();
-    const date = document.getElementById("edit-date").value;
-    if (!merchant || !date) {
-      alert("업체와 날짜를 입력해주세요.");
-      return;
-    }
+    const date     = document.getElementById("edit-date").value;
+    if (!merchant || !date) { alert("업체와 날짜를 입력해주세요."); return; }
+
+    const saveBtn = document.getElementById("edit-save");
+    saveBtn.disabled = true;
+    saveBtn.textContent = "저장 중…";
+
     try {
-      const resp = await fetch(`/grocery/receipt/${_editingReceiptId}`, {
+      const list = document.getElementById("edit-items-list");
+      const rows = [...list.querySelectorAll(".edit-item-row")];
+
+      // 1. 메타 수정
+      await fetch(`/grocery/receipt/${_editingReceiptId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          merchant,
-          purchase_date: date,
-          user_id: USER_CODE,
-        }),
+        body: JSON.stringify({ merchant, purchase_date: date, user_id: USER_CODE }),
       });
-      const data = await resp.json();
-      if (data.ok) {
-        document.getElementById("receipt-edit-overlay").style.display = "none";
-        await openHistoryPanel();
-      } else {
-        alert("저장 실패: " + (data.reason || ""));
+
+      // 2. 삭제된 품목
+      for (const id of _editDeletedIds) {
+        await fetch(`/grocery/item/${id}?user_id=${encodeURIComponent(USER_CODE)}`, { method: "DELETE" });
       }
+
+      // 3. 기존 품목 수정 / 신규 품목 추가
+      for (const row of rows) {
+        const id      = row.dataset.itemId;
+        const rawName = row.querySelector(".edit-item-name").value.trim();
+        const qty     = parseInt(row.querySelector(".edit-item-qty").value) || 1;
+        const amount  = parseInt(row.querySelector(".edit-item-amount").value) || null;
+        if (!rawName) continue;
+
+        if (String(id).startsWith("new-")) {
+          await fetch(`/grocery/receipt/${_editingReceiptId}/item`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ raw_name: rawName, qty, amount, user_id: USER_CODE }),
+          });
+        } else {
+          await fetch(`/grocery/item/${id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ raw_name: rawName, qty, amount, user_id: USER_CODE }),
+          });
+        }
+      }
+
+      document.getElementById("receipt-edit-overlay").style.display = "none";
+      await openHistoryPanel();
     } catch (err) {
       alert("오류: " + err.message);
+    } finally {
+      saveBtn.disabled = false;
+      saveBtn.textContent = "저장";
     }
   });
 
@@ -2150,25 +2288,6 @@ ${weeksHtml}
       openEditModal(r.id, r.merchant || "", r.purchase_date || "");
     });
     right.appendChild(editBtn);
-
-    const delBtn = document.createElement("button");
-    delBtn.className = "hrc-del-btn";
-    delBtn.textContent = "삭제";
-    delBtn.addEventListener("click", async e => {
-      e.stopPropagation();
-      const label = `${r.merchant || "알 수 없음"} · ${r.purchase_date || "날짜 미상"}`;
-      if (!confirm(`이 영수증을 삭제할까요?\n${label}`)) return;
-      const resp = await fetch(
-        `/grocery/receipt/${r.id}?user_id=${encodeURIComponent(USER_CODE)}`,
-        { method: "DELETE" }
-      );
-      if (resp.ok) {
-        card.remove();
-      } else {
-        alert("삭제에 실패했습니다.");
-      }
-    });
-    right.appendChild(delBtn);
 
     row.appendChild(right);
 

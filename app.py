@@ -125,6 +125,22 @@ class GroceryUpdateRequest(BaseModel):
     user_id: str = ""
 
 
+class GroceryItemAddRequest(BaseModel):
+    raw_name: str
+    qty: int = 1
+    unit_price: int | None = None
+    amount: int | None = None
+    user_id: str = ""
+
+
+class GroceryItemUpdateRequest(BaseModel):
+    raw_name: str | None = None
+    qty: int | None = None
+    unit_price: int | None = None
+    amount: int | None = None
+    user_id: str = ""
+
+
 class TextExtractRequest(BaseModel):
     text: str
     user_id: str = ""
@@ -505,6 +521,42 @@ async def grocery_update_receipt(receipt_id: int, req: GroceryUpdateRequest):
         None, lambda: db.update_grocery_receipt_meta(receipt_id, req.merchant, req.purchase_date, req.user_id)
     )
     return {"ok": updated, "reason": None if updated else "not_found"}
+
+
+@app.delete("/grocery/item/{item_id}")
+async def grocery_delete_item(item_id: int, user_id: str = ""):
+    """품목 삭제."""
+    if not state.db_enabled:
+        return {"ok": False}
+    loop = asyncio.get_event_loop()
+    deleted = await loop.run_in_executor(None, lambda: db.delete_grocery_item(item_id, user_id))
+    return {"ok": deleted}
+
+
+@app.post("/grocery/receipt/{receipt_id}/item")
+async def grocery_add_item(receipt_id: int, req: GroceryItemAddRequest):
+    """품목 추가."""
+    if not state.db_enabled:
+        raise HTTPException(status_code=503, detail="db_not_enabled")
+    loop = asyncio.get_event_loop()
+    item = await loop.run_in_executor(None, lambda: db.add_grocery_item(
+        receipt_id, req.raw_name, req.qty, req.unit_price, req.amount, req.user_id
+    ))
+    if item is None:
+        raise HTTPException(status_code=404, detail="receipt_not_found")
+    return item
+
+
+@app.put("/grocery/item/{item_id}")
+async def grocery_update_item(item_id: int, req: GroceryItemUpdateRequest):
+    """품목 수정."""
+    if not state.db_enabled:
+        return {"ok": False}
+    loop = asyncio.get_event_loop()
+    updated = await loop.run_in_executor(None, lambda: db.update_grocery_item(
+        item_id, req.raw_name, req.qty, req.unit_price, req.amount, req.user_id
+    ))
+    return {"ok": updated}
 
 
 @app.get("/grocery/debug")

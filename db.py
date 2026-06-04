@@ -294,6 +294,61 @@ def delete_grocery_receipt(receipt_id: int, user_id: str) -> bool:
     return deleted
 
 
+def delete_grocery_item(item_id: int, user_id: str) -> bool:
+    """품목 삭제. 해당 영수증 소유자만 가능."""
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                DELETE FROM grocery_items
+                WHERE id = %s AND receipt_id IN (
+                    SELECT id FROM grocery_receipts WHERE user_id = %s
+                )
+            """, (item_id, user_id))
+            deleted = cur.rowcount > 0
+        conn.commit()
+    return deleted
+
+
+def add_grocery_item(receipt_id: int, raw_name: str, qty: int, unit_price: int | None, amount: int | None, user_id: str) -> dict | None:
+    """품목 추가. 영수증 소유자만 가능. 추가된 품목 반환."""
+    with _get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT id FROM grocery_receipts WHERE id = %s AND user_id = %s", (receipt_id, user_id))
+            if not cur.fetchone():
+                return None
+            cur.execute("""
+                INSERT INTO grocery_items (receipt_id, raw_name, qty, unit_price, amount, is_cancelled)
+                VALUES (%s, %s, %s, %s, %s, FALSE)
+                RETURNING id, raw_name, qty, unit_price, amount, is_cancelled
+            """, (receipt_id, raw_name, qty, unit_price, amount))
+            row = dict(cur.fetchone())
+        conn.commit()
+    return row
+
+
+def update_grocery_item(item_id: int, raw_name: str | None, qty: int | None, unit_price: int | None, amount: int | None, user_id: str) -> bool:
+    """품목 수정. 영수증 소유자만 가능."""
+    updates, params = [], []
+    if raw_name  is not None: updates.append("raw_name = %s");   params.append(raw_name)
+    if qty       is not None: updates.append("qty = %s");        params.append(qty)
+    if unit_price is not None: updates.append("unit_price = %s"); params.append(unit_price)
+    if amount    is not None: updates.append("amount = %s");     params.append(amount)
+    if not updates:
+        return False
+    params.extend([item_id, user_id])
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"""
+                UPDATE grocery_items SET {', '.join(updates)}
+                WHERE id = %s AND receipt_id IN (
+                    SELECT id FROM grocery_receipts WHERE user_id = %s
+                )
+            """, params)
+            updated = cur.rowcount > 0
+        conn.commit()
+    return updated
+
+
 def update_grocery_receipt_meta(receipt_id: int, merchant: str | None, purchase_date: str | None, user_id: str) -> bool:
     """영수증 메타데이터 수정. 소유자만 가능. True if updated."""
     with _get_conn() as conn:
