@@ -314,6 +314,18 @@ async def chat_stream(req: ChatRequest):
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
+@app.get("/chat/history")
+async def chat_history(session_id: str = "", limit: int = 40):
+    """이전 대화 이력 반환 (UI 복원용)."""
+    if not state.db_enabled or not session_id:
+        return []
+    loop = asyncio.get_event_loop()
+    msgs = await loop.run_in_executor(
+        None, lambda: db.load_messages(session_id, limit=limit)
+    )
+    return msgs
+
+
 @app.post("/chat/note")
 async def chat_note(req: ChatNoteRequest):
     """LLM 호출 없이 대화 이력에 노트 주입 (영수증 삭제 알림 등)."""

@@ -2009,6 +2009,24 @@
 
   loadInfo();
 
+  // ── 이전 대화 이력 복원 ──
+  async function loadChatHistory() {
+    try {
+      const msgs = await fetch(`/chat/history?session_id=${SESSION_ID}`).then(r => r.json());
+      if (!msgs || msgs.length === 0) return;
+      msgs.forEach(msg => {
+        const { row, bubble } = addBubble(msg.role);
+        if (msg.role === "user") {
+          bubble.textContent = msg.content;
+        } else {
+          renderMarkdown(bubble, msg.content);
+        }
+      });
+      chatWrap.scrollTop = chatWrap.scrollHeight;
+    } catch {}
+  }
+  loadChatHistory();
+
   // ── grocery_saved 자동 요약 ──
   const _params = new URLSearchParams(window.location.search);
   if (_params.get("grocery_saved")) {
