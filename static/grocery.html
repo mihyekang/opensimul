@@ -669,6 +669,48 @@
     }
     #text-extract-btn:disabled { background: #b0c8e8; cursor: not-allowed; }
     #text-extract-btn:not(:disabled):hover { background: #005fa3; }
+
+    /* ── history section ── */
+    #history-section {
+      width: 100%; max-width: 480px;
+      margin-top: 28px;
+    }
+    .hist-section-title {
+      font-size: 0.88rem; font-weight: 600; color: #444;
+      margin-bottom: 10px;
+    }
+    .hist-date-bar {
+      display: flex; align-items: center; gap: 6px;
+      margin-bottom: 12px; flex-wrap: wrap;
+    }
+    .hist-date-bar input[type="date"] {
+      flex: 1; min-width: 130px; padding: 8px 10px;
+      border: 1px solid #d1d5db; border-radius: 8px;
+      font-size: 0.82rem; color: #333;
+    }
+    .hist-date-bar span { font-size: 0.82rem; color: #888; }
+    #hist-search-btn {
+      padding: 8px 16px; background: #0078d4; color: #fff;
+      border: none; border-radius: 8px; font-size: 0.82rem;
+      cursor: pointer; white-space: nowrap;
+    }
+    #hist-search-btn:hover { background: #106ebe; }
+    .hist-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+    .hist-chip {
+      padding: 4px 12px; border-radius: 20px; font-size: 0.78rem;
+      border: 1px solid #d1d5db; background: #fff; cursor: pointer; color: #555;
+    }
+    .hist-chip.active { background: #0078d4; color: #fff; border-color: #0078d4; }
+    .hist-stat { font-size: 0.78rem; color: #888; margin-bottom: 10px; }
+    .hist-card {
+      background: #fff; border-radius: 12px; padding: 14px 16px;
+      margin-bottom: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+    }
+    .hist-card-top { display: flex; justify-content: space-between; align-items: center; }
+    .hist-card-merchant { font-weight: 600; font-size: 0.9rem; color: #111; }
+    .hist-card-total { font-weight: 700; font-size: 0.9rem; color: #0078d4; }
+    .hist-card-meta { font-size: 0.75rem; color: #999; margin-top: 4px; }
+    #hist-empty { text-align: center; padding: 32px 0; font-size: 0.85rem; color: #bbb; display: none; }
   </style>
 </head>
 <body>
@@ -724,6 +766,21 @@
 <div id="result-wrap"></div>
 <div id="bulk-save-bar">
   <button id="bulk-save-btn">💾 저장하고 채팅에서 분석하기</button>
+</div>
+
+<!-- 영수증 이력 + 날짜 검색 -->
+<div id="history-section">
+  <p class="hist-section-title">영수증 이력</p>
+  <div class="hist-date-bar">
+    <input type="date" id="hist-start" />
+    <span>~</span>
+    <input type="date" id="hist-end" />
+    <button id="hist-search-btn">조회</button>
+  </div>
+  <div id="hist-chips" class="hist-chips"></div>
+  <div id="hist-stat" class="hist-stat"></div>
+  <div id="hist-list"></div>
+  <p id="hist-empty">저장된 영수증이 없어요.</p>
 </div>
 
 <!-- auth overlay -->
@@ -1150,6 +1207,7 @@
             entry.saved = true;
             saveBtn.textContent = "✅ 저장됨";
             saveBtn.classList.add("saved");
+            document.dispatchEvent(new Event("receipt-saved"));
           } else {
             saveBtn.disabled = false;
             saveBtn.textContent = "💾 이 영수증 저장";
@@ -1468,6 +1526,94 @@
     renderView();
     return section;
   }
+
+  // ── 영수증 이력 날짜 검색 ──
+  (function() {
+    const today = new Date().toISOString().slice(0, 10);
+    const thirtyAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+    const startEl = document.getElementById("hist-start");
+    const endEl   = document.getElementById("hist-end");
+    const chips   = document.getElementById("hist-chips");
+    const stat    = document.getElementById("hist-stat");
+    const list    = document.getElementById("hist-list");
+    const empty   = document.getElementById("hist-empty");
+    startEl.value = thirtyAgo;
+    endEl.value   = today;
+
+    let _rows = [];
+    let _active = "전체";
+
+    function applyFilter(m) {
+      _active = m;
+      chips.querySelectorAll(".hist-chip").forEach(c => c.classList.toggle("active", c.dataset.m === m));
+      const filtered = m === "전체" ? _rows : _rows.filter(r => (r.merchant || "알 수 없음") === m);
+      const total = filtered.reduce((s, r) => s + (r.total || 0), 0);
+      stat.textContent = `${filtered.length}건 · 합계 ${total.toLocaleString("ko-KR")}원`;
+      list.querySelectorAll(".hist-card").forEach(card => {
+        card.style.display = (m === "전체" || card.dataset.merchant === m) ? "" : "none";
+      });
+      empty.style.display = filtered.length === 0 ? "block" : "none";
+    }
+
+    function renderChips() {
+      chips.innerHTML = "";
+      const merchants = ["전체", ...new Set(_rows.map(r => r.merchant || "알 수 없음"))];
+      merchants.forEach(m => {
+        const btn = document.createElement("button");
+        btn.className = "hist-chip" + (m === _active ? " active" : "");
+        btn.dataset.m = m;
+        btn.textContent = m;
+        btn.addEventListener("click", () => applyFilter(m));
+        chips.appendChild(btn);
+      });
+    }
+
+    function renderList() {
+      list.innerHTML = "";
+      if (!_rows.length) { empty.style.display = "block"; stat.textContent = ""; chips.innerHTML = ""; return; }
+      empty.style.display = "none";
+      renderChips();
+      _rows.forEach(r => {
+        const card = document.createElement("div");
+        card.className = "hist-card";
+        card.dataset.merchant = r.merchant || "알 수 없음";
+        card.innerHTML = `
+          <div class="hist-card-top">
+            <span class="hist-card-merchant">${r.merchant || "알 수 없음"}</span>
+            <span class="hist-card-total">${(r.total || 0).toLocaleString("ko-KR")}원</span>
+          </div>
+          <div class="hist-card-meta">${r.purchase_date || "날짜 미상"} · ${r.item_count || 0}개 품목</div>
+        `;
+        list.appendChild(card);
+      });
+      applyFilter(_active);
+    }
+
+    async function loadHistory() {
+      if (!USER_ID) return;
+      stat.textContent = "조회 중…";
+      chips.innerHTML = "";
+      list.innerHTML = "";
+      empty.style.display = "none";
+      try {
+        const s = startEl.value, e = endEl.value;
+        const url = `/grocery/history?start_date=${s}&end_date=${e}&user_id=${encodeURIComponent(USER_ID)}`;
+        _rows = await fetch(url).then(r => r.json());
+        _active = "전체";
+        renderList();
+      } catch (err) {
+        stat.textContent = "오류: " + err.message;
+      }
+    }
+
+    document.getElementById("hist-search-btn").addEventListener("click", loadHistory);
+    endEl.addEventListener("change", loadHistory);
+
+    if (USER_ID) loadHistory();
+
+    // 영수증 저장 후 이력 자동 갱신
+    document.addEventListener("receipt-saved", loadHistory);
+  })();
 </script>
 </body>
 </html>
