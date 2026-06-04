@@ -541,6 +541,8 @@
       display: flex;
       gap: 8px;
       margin-bottom: 16px;
+      width: 100%;
+      max-width: 480px;
     }
     .mode-tab {
       flex: 1;
@@ -553,6 +555,7 @@
       color: #888;
       cursor: pointer;
       transition: border-color 0.15s, color 0.15s, background 0.15s;
+      font-family: inherit;
     }
     .mode-tab.active {
       border-color: #0078d4;
@@ -561,6 +564,10 @@
     }
 
     /* text section */
+    #img-section, #text-section {
+      width: 100%;
+      max-width: 480px;
+    }
     #text-section { display: none; }
     #receipt-text-input {
       width: 100%;
