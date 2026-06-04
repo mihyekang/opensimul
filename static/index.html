@@ -831,12 +831,15 @@
     .edit-items-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
     .edit-items-hint { font-size:0.72rem; color:#aaa; }
     .edit-items-list { display:flex; flex-direction:column; gap:5px; margin-bottom:8px; max-height:300px; overflow-y:auto; }
-    .edit-item-row { display:grid; grid-template-columns:30px 1fr 52px 80px; gap:5px; align-items:center; }
-    .edit-item-del {
-      width:28px; height:28px; border-radius:50%; border:1.5px solid #fca5a5;
-      background:none; color:#dc2626; font-size:1.1rem; font-weight:700;
+    .edit-item-row { display:grid; grid-template-columns:28px 28px 1fr 52px 80px; gap:5px; align-items:center; }
+    .edit-item-add, .edit-item-del {
+      width:26px; height:26px; border-radius:50%; background:none;
       cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; line-height:1;
+      font-size:1rem; font-weight:700;
     }
+    .edit-item-add { border:1.5px solid #86efac; color:#16a34a; }
+    .edit-item-add:hover { background:#dcfce7; }
+    .edit-item-del { border:1.5px solid #fca5a5; color:#dc2626; }
     .edit-item-del:hover { background:#fee2e2; }
     .edit-item-name, .edit-item-qty, .edit-item-amount {
       padding:6px 7px; border:1px solid #e5e7eb; border-radius:6px;
@@ -1719,6 +1722,16 @@
     row.className = "edit-item-row";
     row.dataset.itemId = item.id ?? `new-${++_editNewCounter}`;
 
+    const add = document.createElement("button");
+    add.className = "edit-item-add";
+    add.textContent = "+";
+    add.title = "아래에 항목 추가";
+    add.addEventListener("click", () => {
+      const newRow = _makeEditItemRow({ raw_name: "", qty: 1, amount: null });
+      row.insertAdjacentElement("afterend", newRow);
+      newRow.querySelector(".edit-item-name").focus();
+    });
+
     const del = document.createElement("button");
     del.className = "edit-item-del";
     del.textContent = "−";
@@ -1748,6 +1761,7 @@
     amt.value = item.amount ?? "";
     amt.placeholder = "금액";
 
+    row.appendChild(add);
     row.appendChild(del);
     row.appendChild(name);
     row.appendChild(qty);
