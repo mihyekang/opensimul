@@ -92,6 +92,17 @@
       padding: 48px 16px; color: #aaa; font-size: 0.88rem; display: none;
     }
 
+    .section-label {
+      width: 100%; max-width: 600px;
+      font-size: 0.78rem; font-weight: 600; color: #888;
+      margin: 20px 0 8px; letter-spacing: 0.03em;
+    }
+    .pantry-card.history-card {
+      opacity: 0.65;
+    }
+    .pantry-card.history-card td { color: #999; }
+    .pantry-card.history-card .qty-cell { color: #bbb; }
+
     #edit-overlay {
       display: none; position: fixed; inset: 0;
       background: rgba(0,0,0,0.4); z-index: 900;
@@ -190,6 +201,21 @@
   </table>
 </div>
 <div id="empty-msg">재고 항목이 없습니다.<br>영수증을 저장하면 자동으로 추가됩니다.</div>
+
+<p class="section-label" id="history-label" style="display:none">재고 이력</p>
+<div class="pantry-card history-card" id="history-card" style="display:none">
+  <table>
+    <thead>
+      <tr>
+        <th>품목</th>
+        <th>전체 수량</th>
+        <th>현재 수량</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="history-body"></tbody>
+  </table>
+</div>
 
 <div id="edit-overlay">
   <div id="edit-modal">
@@ -315,34 +341,73 @@
   }
 
   function renderTable() {
-    const tbody = document.getElementById("pantry-body");
-    const empty = document.getElementById("empty-msg");
-    const card  = document.querySelector(".pantry-card");
-    tbody.innerHTML = "";
-    if (!_items.length) {
-      empty.style.display = "block";
-      card.style.display  = "none";
+    const tbody       = document.getElementById("pantry-body");
+    const histBody    = document.getElementById("history-body");
+    const empty       = document.getElementById("empty-msg");
+    const card        = document.querySelector(".pantry-card");
+    const histCard    = document.getElementById("history-card");
+    const histLabel   = document.getElementById("history-label");
+
+    tbody.innerHTML    = "";
+    histBody.innerHTML = "";
+
+    const active  = _items.filter(i => i.current_qty > 0);
+    const history = _items.filter(i => i.current_qty === 0);
+
+    if (!active.length && !history.length) {
+      empty.style.display    = "block";
+      card.style.display     = "none";
+      histCard.style.display = "none";
+      histLabel.style.display = "none";
       return;
     }
+
     empty.style.display = "none";
-    card.style.display  = "";
-    for (const item of _items) {
-      const unit    = item.unit || "개";
-      const lowStock = item.total_qty > 0 && item.current_qty <= Math.floor(item.total_qty * 0.2);
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${esc(item.raw_name)}</td>
-        <td class="qty-cell">${item.total_qty}${esc(unit)}</td>
-        <td class="qty-cell${lowStock ? " current-low" : ""}">${item.current_qty}${esc(unit)}</td>
-        <td class="action-cell">
-          <button class="btn-edit" data-id="${item.id}">수정</button>
-          <button class="btn-del"  data-id="${item.id}">삭제</button>
-        </td>
-      `;
-      tbody.appendChild(tr);
+
+    if (active.length) {
+      card.style.display = "";
+      for (const item of active) {
+        const unit     = item.unit || "개";
+        const lowStock = item.total_qty > 0 && item.current_qty <= Math.floor(item.total_qty * 0.2);
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${esc(item.raw_name)}</td>
+          <td class="qty-cell">${item.total_qty}${esc(unit)}</td>
+          <td class="qty-cell${lowStock ? " current-low" : ""}">${item.current_qty}${esc(unit)}</td>
+          <td class="action-cell">
+            <button class="btn-edit" data-id="${item.id}">수정</button>
+            <button class="btn-del"  data-id="${item.id}">삭제</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      }
+    } else {
+      card.style.display = "none";
     }
+
+    if (history.length) {
+      histCard.style.display  = "";
+      histLabel.style.display = "";
+      for (const item of history) {
+        const unit = item.unit || "개";
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${esc(item.raw_name)}</td>
+          <td class="qty-cell">${item.total_qty}${esc(unit)}</td>
+          <td class="qty-cell">0${esc(unit)}</td>
+          <td class="action-cell">
+            <button class="btn-del" data-id="${item.id}">삭제</button>
+          </td>
+        `;
+        histBody.appendChild(tr);
+      }
+    } else {
+      histCard.style.display  = "none";
+      histLabel.style.display = "none";
+    }
+
     tbody.querySelectorAll(".btn-edit").forEach(b => b.addEventListener("click", () => openEdit(+b.dataset.id)));
-    tbody.querySelectorAll(".btn-del").forEach(b  => b.addEventListener("click", () => delItem(+b.dataset.id)));
+    document.querySelectorAll(".btn-del").forEach(b => b.addEventListener("click", () => delItem(+b.dataset.id)));
   }
 
   function esc(s) {
