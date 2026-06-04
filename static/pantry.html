@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>재고 관리</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f5f6f8;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 16px 48px;
+    }
+    h1 { font-size: 1.1rem; font-weight: 600; color: #111; margin-bottom: 4px; }
+    .subtitle { font-size: 0.78rem; color: #888; margin-bottom: 20px; }
+
+    .grocery-topbar {
+      width: 100%; max-width: 600px;
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 20px;
+    }
+    .topbar-right { display: flex; align-items: center; gap: 8px; }
+    #user-bar-code { font-size: 0.8rem; color: #555; }
+    #logout-btn {
+      font-size: 0.75rem; padding: 4px 10px;
+      border: 1px solid #ccc; border-radius: 6px;
+      background: #fff; cursor: pointer; color: #555; display: none;
+    }
+    #logout-btn:hover { background: #f0f0f0; }
+
+    #g-hamburger-btn {
+      background: none; border: none; cursor: pointer;
+      font-size: 1.2rem; padding: 4px 8px; border-radius: 6px; color: #333;
+    }
+    #g-hamburger-btn:hover { background: #f0f0f0; }
+    #g-hamburger-menu {
+      display: none; position: fixed; top: 40px; left: 12px;
+      background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.12); padding: 6px 0;
+      z-index: 1000; min-width: 140px;
+    }
+    #g-hamburger-menu.open { display: block; }
+    .g-hmenu-item {
+      display: block; padding: 10px 18px;
+      font-size: 0.88rem; color: #333; text-decoration: none;
+    }
+    .g-hmenu-item:hover { background: #f5f6f8; }
+
+    #add-btn {
+      width: 100%; max-width: 600px;
+      padding: 10px; margin-bottom: 16px;
+      background: #0078d4; color: #fff; border: none; border-radius: 10px;
+      font-size: 0.9rem; font-weight: 500; cursor: pointer;
+    }
+    #add-btn:hover { background: #106ebe; }
+
+    .pantry-card {
+      width: 100%; max-width: 600px;
+      background: #fff; border-radius: 14px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08); overflow: hidden;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      background: #f5f6f8; font-size: 0.78rem; color: #888;
+      font-weight: 600; padding: 10px 14px; text-align: left;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    td { padding: 12px 14px; border-bottom: 1px solid #f0f0f0; font-size: 0.88rem; vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #fafafa; }
+    .qty-cell { font-weight: 600; color: #111; }
+    .current-low { color: #dc2626; }
+    .action-cell { text-align: right; white-space: nowrap; }
+    .btn-edit, .btn-del {
+      border: none; border-radius: 6px; cursor: pointer;
+      font-size: 0.75rem; padding: 4px 10px; margin-left: 4px;
+    }
+    .btn-edit { background: #e8f0fe; color: #1a56db; }
+    .btn-edit:hover { background: #d0e3ff; }
+    .btn-del { background: #fee2e2; color: #dc2626; }
+    .btn-del:hover { background: #fecaca; }
+
+    #empty-msg {
+      width: 100%; max-width: 600px; text-align: center;
+      padding: 48px 16px; color: #aaa; font-size: 0.88rem; display: none;
+    }
+
+    #edit-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.4); z-index: 900;
+      align-items: center; justify-content: center;
+    }
+    #edit-overlay.visible { display: flex; }
+    #edit-modal {
+      background: #fff; border-radius: 16px; padding: 24px 20px;
+      width: 320px; max-width: 92vw;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+    }
+    .edit-title { font-size: 1rem; font-weight: 600; margin-bottom: 16px; }
+    .edit-label { font-size: 0.75rem; color: #888; margin-bottom: 4px; }
+    .edit-row { display: flex; gap: 8px; margin-top: 10px; }
+    .edit-field {
+      flex: 1; padding: 9px 12px;
+      border: 1px solid #d1d5db; border-radius: 8px;
+      font-size: 0.88rem; color: #111; width: 100%;
+    }
+    .edit-field:focus { outline: none; border-color: #0078d4; }
+    .edit-actions { display: flex; gap: 8px; margin-top: 16px; }
+    .edit-save { flex: 1; background: #0078d4; color: #fff; border: none; border-radius: 8px; padding: 10px; font-size: 0.88rem; cursor: pointer; }
+    .edit-save:hover { background: #106ebe; }
+    .edit-cancel { flex: 1; background: #f3f4f6; color: #555; border: none; border-radius: 8px; padding: 10px; font-size: 0.88rem; cursor: pointer; }
+    .edit-cancel:hover { background: #e5e7eb; }
+
+    #auth-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.5); z-index: 1100;
+      align-items: center; justify-content: center;
+    }
+    #auth-overlay.visible { display: flex; }
+    #auth-modal {
+      background: #fff; border-radius: 16px; padding: 28px 24px;
+      width: 320px; max-width: 92vw;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+    }
+    .auth-title { font-size: 1.05rem; font-weight: 600; text-align: center; margin-bottom: 16px; }
+    .auth-tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+    .auth-tab {
+      flex: 1; padding: 8px; border: 1px solid #d1d5db; border-radius: 8px;
+      background: #f9fafb; color: #555; cursor: pointer; font-size: 0.85rem;
+    }
+    .auth-tab.active { background: #0078d4; color: #fff; border-color: #0078d4; }
+    .auth-field {
+      display: block; width: 100%; padding: 10px 12px; margin-bottom: 10px;
+      border: 1px solid #d1d5db; border-radius: 8px; font-size: 0.88rem;
+    }
+    .auth-field:focus { outline: none; border-color: #0078d4; }
+    #auth-submit-btn {
+      width: 100%; padding: 11px; background: #0078d4; color: #fff;
+      border: none; border-radius: 8px; font-size: 0.9rem; cursor: pointer; font-weight: 500;
+    }
+    #auth-submit-btn:hover:not(:disabled) { background: #106ebe; }
+    #auth-submit-btn:disabled { background: #b0c8e8; cursor: not-allowed; }
+    #auth-error-msg { font-size: 0.78rem; color: #dc2626; text-align: center; margin-top: 8px; min-height: 18px; }
+    .auth-hint { font-size: 0.75rem; color: #aaa; text-align: center; margin-top: 14px; }
+  </style>
+</head>
+<body>
+
+<div id="g-hamburger-menu">
+  <a href="/chat" class="g-hmenu-item">채팅</a>
+  <a href="/grocery" class="g-hmenu-item">영수증 분석기</a>
+  <a href="/pantry" class="g-hmenu-item">재고 관리</a>
+</div>
+
+<div class="grocery-topbar">
+  <button id="g-hamburger-btn" title="메뉴">☰</button>
+  <div class="topbar-right">
+    <span id="user-bar-code"></span>
+    <button id="logout-btn">로그아웃</button>
+  </div>
+</div>
+
+<h1>재고 관리</h1>
+<p class="subtitle">영수증 저장 시 자동으로 추가됩니다</p>
+
+<button id="add-btn">+ 직접 추가</button>
+
+<div class="pantry-card">
+  <table>
+    <thead>
+      <tr>
+        <th>품목</th>
+        <th>전체 수량</th>
+        <th>현재 수량</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="pantry-body"></tbody>
+  </table>
+</div>
+<div id="empty-msg">재고 항목이 없습니다.<br>영수증을 저장하면 자동으로 추가됩니다.</div>
+
+<div id="edit-overlay">
+  <div id="edit-modal">
+    <p class="edit-title" id="edit-modal-title">품목 수정</p>
+    <div>
+      <p class="edit-label">품목명</p>
+      <input id="edit-name" class="edit-field" placeholder="예: 계란" />
+    </div>
+    <div class="edit-row">
+      <div style="flex:1">
+        <p class="edit-label">전체 수량</p>
+        <input id="edit-total" class="edit-field" type="number" min="0" placeholder="30" />
+      </div>
+      <div style="flex:1">
+        <p class="edit-label">현재 수량</p>
+        <input id="edit-current" class="edit-field" type="number" min="0" placeholder="27" />
+      </div>
+      <div style="flex:1">
+        <p class="edit-label">단위</p>
+        <input id="edit-unit" class="edit-field" placeholder="개" />
+      </div>
+    </div>
+    <div class="edit-actions">
+      <button class="edit-save" id="edit-save-btn">저장</button>
+      <button class="edit-cancel" id="edit-cancel-btn">취소</button>
+    </div>
+  </div>
+</div>
+
+<div id="auth-overlay">
+  <div id="auth-modal">
+    <p class="auth-title">재고 관리</p>
+    <div class="auth-tabs">
+      <button id="tab-login" class="auth-tab active">로그인</button>
+      <button id="tab-register" class="auth-tab">회원가입</button>
+    </div>
+    <input id="auth-code-input" class="auth-field" type="text" placeholder="사용자 코드 (예: family01)" maxlength="30" autocomplete="username" />
+    <input id="auth-pass-input" class="auth-field" type="password" placeholder="비밀번호" maxlength="100" autocomplete="current-password" />
+    <button id="auth-submit-btn">로그인</button>
+    <p id="auth-error-msg"></p>
+    <p class="auth-hint">코드는 가족끼리 공유할 수 있어요 🏠</p>
+  </div>
+</div>
+
+<script>
+  let USER_ID   = localStorage.getItem("grocery_user_code") || "";
+  let authMode  = "login";
+  let editingId = null;
+
+  function showAuth() { document.getElementById("auth-overlay").classList.add("visible"); }
+  function hideAuth() { document.getElementById("auth-overlay").classList.remove("visible"); }
+
+  function updateUserBar() {
+    if (USER_ID) {
+      document.getElementById("user-bar-code").textContent = `👤 ${USER_ID}`;
+      document.getElementById("logout-btn").style.display = "inline-block";
+    } else {
+      document.getElementById("user-bar-code").textContent = "";
+      document.getElementById("logout-btn").style.display = "none";
+    }
+  }
+
+  document.getElementById("tab-login").addEventListener("click", () => {
+    authMode = "login";
+    document.getElementById("tab-login").classList.add("active");
+    document.getElementById("tab-register").classList.remove("active");
+    document.getElementById("auth-submit-btn").textContent = "로그인";
+    document.getElementById("auth-error-msg").textContent = "";
+  });
+  document.getElementById("tab-register").addEventListener("click", () => {
+    authMode = "register";
+    document.getElementById("tab-register").classList.add("active");
+    document.getElementById("tab-login").classList.remove("active");
+    document.getElementById("auth-submit-btn").textContent = "회원가입";
+    document.getElementById("auth-error-msg").textContent = "";
+  });
+
+  document.getElementById("auth-submit-btn").addEventListener("click", submitAuth);
+  document.getElementById("auth-pass-input").addEventListener("keydown", e => { if (e.key === "Enter") submitAuth(); });
+
+  async function submitAuth() {
+    const code = document.getElementById("auth-code-input").value.trim();
+    const pass = document.getElementById("auth-pass-input").value;
+    const errMsg = document.getElementById("auth-error-msg");
+    const btn = document.getElementById("auth-submit-btn");
+    if (!code || !pass) { errMsg.textContent = "코드와 비밀번호를 입력하세요."; return; }
+    btn.disabled = true;
+    try {
+      const url = authMode === "login" ? "/auth/login" : "/auth/register";
+      const res = await fetch(url, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_code: code, password: pass }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        localStorage.setItem("grocery_user_code", data.user_code);
+        USER_ID = data.user_code;
+        updateUserBar();
+        hideAuth();
+        loadPantry();
+      } else if (data.reason === "already_exists") {
+        errMsg.textContent = "이미 사용 중인 코드입니다.";
+      } else {
+        errMsg.textContent = authMode === "login" ? "코드 또는 비밀번호가 맞지 않습니다." : "오류가 발생했습니다.";
+      }
+    } catch { errMsg.textContent = "네트워크 오류가 발생했습니다."; }
+    btn.disabled = false;
+  }
+
+  document.getElementById("logout-btn").addEventListener("click", () => {
+    localStorage.removeItem("grocery_user_code");
+    USER_ID = "";
+    updateUserBar();
+    showAuth();
+  });
+
+  const _hamBtn  = document.getElementById("g-hamburger-btn");
+  const _hamMenu = document.getElementById("g-hamburger-menu");
+  _hamBtn.addEventListener("click", e => { e.stopPropagation(); _hamMenu.classList.toggle("open"); });
+  document.addEventListener("click", () => _hamMenu.classList.remove("open"));
+
+  let _items = [];
+
+  async function loadPantry() {
+    if (!USER_ID) return;
+    try {
+      const res = await fetch(`/pantry/items?user_id=${encodeURIComponent(USER_ID)}`);
+      _items = await res.json();
+      renderTable();
+    } catch (e) { console.error(e); }
+  }
+
+  function renderTable() {
+    const tbody = document.getElementById("pantry-body");
+    const empty = document.getElementById("empty-msg");
+    const card  = document.querySelector(".pantry-card");
+    tbody.innerHTML = "";
+    if (!_items.length) {
+      empty.style.display = "block";
+      card.style.display  = "none";
+      return;
+    }
+    empty.style.display = "none";
+    card.style.display  = "";
+    for (const item of _items) {
+      const unit    = item.unit || "개";
+      const lowStock = item.total_qty > 0 && item.current_qty <= Math.floor(item.total_qty * 0.2);
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${esc(item.raw_name)}</td>
+        <td class="qty-cell">${item.total_qty}${esc(unit)}</td>
+        <td class="qty-cell${lowStock ? " current-low" : ""}">${item.current_qty}${esc(unit)}</td>
+        <td class="action-cell">
+          <button class="btn-edit" data-id="${item.id}">수정</button>
+          <button class="btn-del"  data-id="${item.id}">삭제</button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    }
+    tbody.querySelectorAll(".btn-edit").forEach(b => b.addEventListener("click", () => openEdit(+b.dataset.id)));
+    tbody.querySelectorAll(".btn-del").forEach(b  => b.addEventListener("click", () => delItem(+b.dataset.id)));
+  }
+
+  function esc(s) {
+    return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  function openEdit(id) {
+    editingId = id;
+    const item = _items.find(i => i.id === id);
+    document.getElementById("edit-modal-title").textContent = "품목 수정";
+    document.getElementById("edit-name").value    = item.raw_name;
+    document.getElementById("edit-total").value   = item.total_qty;
+    document.getElementById("edit-current").value = item.current_qty;
+    document.getElementById("edit-unit").value    = item.unit || "개";
+    document.getElementById("edit-overlay").classList.add("visible");
+  }
+
+  function openAdd() {
+    editingId = null;
+    document.getElementById("edit-modal-title").textContent = "품목 추가";
+    document.getElementById("edit-name").value    = "";
+    document.getElementById("edit-total").value   = "";
+    document.getElementById("edit-current").value = "";
+    document.getElementById("edit-unit").value    = "개";
+    document.getElementById("edit-overlay").classList.add("visible");
+  }
+
+  function closeEdit() { document.getElementById("edit-overlay").classList.remove("visible"); }
+
+  document.getElementById("add-btn").addEventListener("click", openAdd);
+  document.getElementById("edit-cancel-btn").addEventListener("click", closeEdit);
+  document.getElementById("edit-overlay").addEventListener("click", e => {
+    if (e.target === document.getElementById("edit-overlay")) closeEdit();
+  });
+
+  document.getElementById("edit-save-btn").addEventListener("click", async () => {
+    const name    = document.getElementById("edit-name").value.trim();
+    const total   = parseInt(document.getElementById("edit-total").value)   || 0;
+    const current = parseInt(document.getElementById("edit-current").value) || 0;
+    const unit    = document.getElementById("edit-unit").value.trim() || "개";
+    if (!name) { alert("품목명을 입력하세요."); return; }
+
+    if (editingId === null) {
+      await fetch("/pantry/items", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ raw_name: name, total_qty: total, current_qty: current, unit, user_id: USER_ID }),
+      });
+    } else {
+      await fetch(`/pantry/items/${editingId}`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ raw_name: name, total_qty: total, current_qty: current, unit, user_id: USER_ID }),
+      });
+    }
+    closeEdit();
+    loadPantry();
+  });
+
+  async function delItem(id) {
+    if (!confirm("삭제할까요?")) return;
+    await fetch(`/pantry/items/${id}?user_id=${encodeURIComponent(USER_ID)}`, { method: "DELETE" });
+    loadPantry();
+  }
+
+  updateUserBar();
+  if (!USER_ID) showAuth(); else loadPantry();
+</script>
+</body>
+</html>

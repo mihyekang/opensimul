@@ -154,6 +154,22 @@ class ChatNoteRequest(BaseModel):
     assistant_note: str
 
 
+class PantryAddRequest(BaseModel):
+    raw_name: str
+    total_qty: int = 0
+    current_qty: int = 0
+    unit: str = "개"
+    user_id: str = ""
+
+
+class PantryUpdateRequest(BaseModel):
+    raw_name: str | None = None
+    total_qty: int | None = None
+    current_qty: int | None = None
+    unit: str | None = None
+    user_id: str = ""
+
+
 # ---------- helpers ----------
 
 def _client(session_id: str):
@@ -475,10 +491,24 @@ async def grocery_save(req: GrocerySaveRequest):
     """Pass 1 추출 결과를 DB에 저장."""
     if not state.db_enabled:
         return {"ok": False, "reason": "db_not_enabled"}
+    from pantry_utils import infer_qty
     loop = asyncio.get_event_loop()
     receipt_id = await loop.run_in_executor(
         None, lambda: db.save_grocery_receipt(req.result, req.user_id)
     )
+    if req.user_id:
+        for item in req.result.get("items", []):
+            if item.get("is_cancelled"):
+                continue
+            if not (item.get("amount") or 0) > 0:
+                continue
+            raw = (item.get("raw_name") or "").strip()
+            if not raw:
+                continue
+            qty, unit = infer_qty(raw, item.get("qty") or 1)
+            await loop.run_in_executor(
+                None, lambda r=raw, q=qty, u=unit: db.upsert_pantry_from_purchase(req.user_id, r, q, u)
+            )
     return {"ok": True, "receipt_id": receipt_id}
 
 
@@ -608,6 +638,52 @@ async def analyses():
         if r.get("cost_usd"):
             r["cost_usd"] = float(r["cost_usd"])
     return rows
+
+
+# ---------- pantry ----------
+
+@app.get("/pantry", response_class=HTMLResponse)
+async def pantry_page():
+    with open("static/pantry.html", encoding="utf-8") as f:
+        return f.read()
+
+
+@app.get("/pantry/items")
+async def pantry_list(user_id: str = ""):
+    if not state.db_enabled:
+        return []
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, lambda: db.list_pantry(user_id))
+
+
+@app.post("/pantry/items")
+async def pantry_add(req: PantryAddRequest):
+    if not state.db_enabled:
+        raise HTTPException(status_code=503, detail="db_not_enabled")
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(
+        None, lambda: db.add_pantry_item(req.user_id, req.raw_name, req.total_qty, req.current_qty, req.unit)
+    )
+
+
+@app.put("/pantry/items/{item_id}")
+async def pantry_update(item_id: int, req: PantryUpdateRequest):
+    if not state.db_enabled:
+        return {"ok": False}
+    loop = asyncio.get_event_loop()
+    updated = await loop.run_in_executor(
+        None, lambda: db.update_pantry_item(item_id, req.user_id, req.raw_name, req.total_qty, req.current_qty, req.unit)
+    )
+    return {"ok": updated}
+
+
+@app.delete("/pantry/items/{item_id}")
+async def pantry_delete(item_id: int, user_id: str = ""):
+    if not state.db_enabled:
+        return {"ok": False}
+    loop = asyncio.get_event_loop()
+    deleted = await loop.run_in_executor(None, lambda: db.delete_pantry_item(item_id, user_id))
+    return {"ok": deleted}
 
 
 # ---------- auth ----------
