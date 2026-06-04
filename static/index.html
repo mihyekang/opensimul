@@ -421,6 +421,7 @@
     .hrc-items-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
     .hrc-items-table td { padding: 5px 4px; border-bottom: 1px solid #f0f0f0; color: #333; }
     .hrc-items-table td:last-child { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .hrc-items-table tr:last-child td { border-bottom: none; }
     .hrc-items-table tr.cancelled td { color: #bbb; text-decoration: line-through; }
     .hrc-items-table tr.discount td { color: #dc2626; }
     .hrc-total-row {
@@ -754,34 +755,6 @@
     }
     .week-label { font-size: 0.82rem; color: #888; font-weight: 600; }
     .week-total { font-size: 1.1rem; font-weight: 800; color: #111; }
-    .week-bar-bg {
-      background: #f0f2f5;
-      border-radius: 4px;
-      height: 8px;
-      margin-bottom: 12px;
-      overflow: hidden;
-    }
-    .week-bar-fill {
-      height: 100%;
-      border-radius: 4px;
-      background: linear-gradient(90deg, #0078d4, #40a9ff);
-      transition: width 0.4s ease;
-    }
-    .week-merchants {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-    .week-merchant-row {
-      display: flex;
-      justify-content: space-between;
-      font-size: 0.8rem;
-      color: #555;
-      padding: 3px 0;
-      border-bottom: 1px solid #f5f5f5;
-    }
-    .week-merchant-row:last-child { border-bottom: none; }
-    .week-merchant-name { color: #333; font-weight: 600; }
     .week-empty { text-align: center; padding: 60px 20px; color: #aaa; font-size: 0.88rem; }
 
     /* weekly date bar */
@@ -821,21 +794,27 @@
     }
     .weekly-apply-btn:hover { background: #106ebe; }
 
-    /* merchant proportion bars */
+    /* stacked bar + merchant list */
+    .week-stacked-bar {
+      height: 14px;
+      border-radius: 7px;
+      display: flex;
+      overflow: hidden;
+      margin-bottom: 12px;
+    }
+    .week-stacked-segment { height: 100%; transition: width 0.4s ease; }
+    .week-merchants { display: flex; flex-direction: column; gap: 2px; }
     .week-merchant-row {
       display: flex;
-      flex-direction: column;
-      gap: 3px;
-      padding: 5px 0;
+      align-items: center;
+      gap: 7px;
+      padding: 4px 0;
       border-bottom: 1px solid #f5f5f5;
     }
     .week-merchant-row:last-child { border-bottom: none; }
-    .week-merchant-top {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
+    .week-merchant-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
     .week-merchant-name {
+      flex: 1;
       color: #333;
       font-weight: 600;
       font-size: 0.8rem;
@@ -844,24 +823,7 @@
       text-underline-offset: 2px;
     }
     .week-merchant-name:hover { color: #0078d4; }
-    .week-merchant-meta {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-    .week-merchant-pct { font-size: 0.72rem; color: #aaa; }
-    .week-merchant-amt { font-size: 0.8rem; color: #555; }
-    .week-merchant-bar-bg {
-      height: 4px;
-      background: #f0f2f5;
-      border-radius: 2px;
-      overflow: hidden;
-    }
-    .week-merchant-bar-fill {
-      height: 100%;
-      border-radius: 2px;
-      background: linear-gradient(90deg, #0078d4, #40a9ff);
-    }
+    .week-merchant-amt { font-size: 0.8rem; color: #555; white-space: nowrap; }
 
     /* edit buttons */
     .hrc-edit-btn {
@@ -1955,27 +1917,50 @@
         });
         const topMerchants = [...merchantMap.entries()].sort((a, b) => b[1] - a[1]);
 
+        // 업체별 색상 팔레트 (순서대로 배정)
+        const _COLORS = [
+          "#0078d4","#16a34a","#f59e0b","#dc2626",
+          "#7c3aed","#0891b2","#ea580c","#be185d",
+        ];
+        const colorMap = new Map();
+        topMerchants.forEach(([m], ci) => colorMap.set(m, _COLORS[ci % _COLORS.length]));
+
         const card = document.createElement("div");
         card.className = "week-card";
-        const barPct = maxTotal > 0 ? Math.round((total / maxTotal) * 100) : 0;
-
         card.innerHTML = `
           <div class="week-card-header">
             <span class="week-label">${weekLabel}</span>
             <span class="week-total">${fmtAmt(total)}</span>
           </div>
-          <div class="week-bar-bg"><div class="week-bar-fill" style="width:${barPct}%"></div></div>
+          <div class="week-stacked-bar"></div>
           <div class="week-merchants"></div>
         `;
-        const merchantsEl = card.querySelector(".week-merchants");
 
+        // stacked bar — 각 업체 비중 세그먼트
+        const stackedBar = card.querySelector(".week-stacked-bar");
+        let _accPct = 0;
+        topMerchants.forEach(([m, t], si) => {
+          const rawPct = total > 0 ? (t / total) * 100 : 0;
+          const isLast = si === topMerchants.length - 1;
+          const pct = isLast ? (100 - _accPct) : Math.round(rawPct);
+          if (!isLast) _accPct += pct;
+          const seg = document.createElement("div");
+          seg.className = "week-stacked-segment";
+          seg.style.width = pct + "%";
+          seg.style.background = colorMap.get(m);
+          seg.title = `${m} ${Math.round(rawPct)}%`;
+          stackedBar.appendChild(seg);
+        });
+
+        // 업체 목록 — 색상 도트 + 업체명(클릭) + 금액
+        const merchantsEl = card.querySelector(".week-merchants");
         topMerchants.forEach(([m, t]) => {
-          const mPct = total > 0 ? Math.round((t / total) * 100) : 0;
           const row = document.createElement("div");
           row.className = "week-merchant-row";
 
-          const top = document.createElement("div");
-          top.className = "week-merchant-top";
+          const dot = document.createElement("span");
+          dot.className = "week-merchant-dot";
+          dot.style.background = colorMap.get(m);
 
           const nameEl = document.createElement("span");
           nameEl.className = "week-merchant-name";
@@ -1985,24 +1970,13 @@
             openHistoryPanel(m, fromDate, toDate);
           });
 
-          const metaEl = document.createElement("span");
-          metaEl.className = "week-merchant-meta";
-          metaEl.innerHTML =
-            `<span class="week-merchant-pct">${mPct}%</span>` +
-            `<span class="week-merchant-amt">${fmtAmt(t)}</span>`;
+          const amtEl = document.createElement("span");
+          amtEl.className = "week-merchant-amt";
+          amtEl.textContent = fmtAmt(t);
 
-          top.appendChild(nameEl);
-          top.appendChild(metaEl);
-
-          const barBg = document.createElement("div");
-          barBg.className = "week-merchant-bar-bg";
-          const barFill = document.createElement("div");
-          barFill.className = "week-merchant-bar-fill";
-          barFill.style.width = mPct + "%";
-          barBg.appendChild(barFill);
-
-          row.appendChild(top);
-          row.appendChild(barBg);
+          row.appendChild(dot);
+          row.appendChild(nameEl);
+          row.appendChild(amtEl);
           merchantsEl.appendChild(row);
         });
 
