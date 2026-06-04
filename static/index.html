@@ -55,7 +55,7 @@
       border: 1px solid #e0e0e0;
       border-radius: 12px;
       box-shadow: 0 4px 20px rgba(0,0,0,.13);
-      z-index: 300;
+      z-index: 1000;
       overflow: hidden;
     }
     #hamburger-menu.open { display: block; }
@@ -108,43 +108,8 @@
     }
     .usage-row:last-child { border-bottom: none; }
 
-    /* ── memory panel ── */
-    #memory-panel {
-      display: none;
-      position: fixed;
-      top: 54px; left: 12px;
-      width: min(300px, calc(100vw - 24px));
-      background: #fff;
-      border: 1px solid #d0d0d0;
-      border-radius: 10px;
-      box-shadow: 0 4px 16px rgba(0,0,0,.12);
-      z-index: 100;
-      padding: 14px;
-    }
-    #memory-panel.open { display: block; }
-    #memory-panel h3 { font-size: 0.85rem; margin-bottom: 10px; color: #333; }
-    #memory-list { margin-bottom: 10px; display: flex; flex-direction: column; gap: 6px; }
-    .mem-item {
-      display: flex; align-items: center; gap: 6px;
-      font-size: 0.78rem; background: #f7f9fc;
-      border-radius: 6px; padding: 5px 8px;
-    }
-    .mem-key   { font-weight: 600; color: #0078d4; }
-    .mem-val   { flex: 1; color: #333; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .mem-del   { background: none; border: none; cursor: pointer; color: #aaa; font-size: 0.8rem; padding: 0 2px; }
-    .mem-del:hover { color: #e00; }
-    .mem-add-row { display: flex; gap: 6px; }
-    .mem-add-row input {
-      flex: 1; border: 1px solid #ddd; border-radius: 6px;
-      padding: 5px 8px; font-size: 0.78rem; outline: none;
-    }
-    .mem-add-row input:focus { border-color: #0078d4; }
-    .mem-add-btn {
-      padding: 5px 10px; background: #0078d4; color: #fff;
-      border: none; border-radius: 6px; font-size: 0.75rem; cursor: pointer;
-    }
-    .mem-add-btn:hover { background: #106ebe; }
-    #mem-empty { font-size: 0.75rem; color: #aaa; text-align: center; padding: 6px 0; }
+
+
 
     /* ── receipt report card ── */
     .receipt-report-block {
@@ -267,6 +232,20 @@
     }
     .rdc-del-btn:hover:not(:disabled) { background: #fecaca; }
     .rdc-del-btn:disabled { background: #f3f4f6; color: #ccc; border-color: #e5e7eb; cursor: default; }
+
+    /* ── overlay hamburger button (visible inside full-screen overlays) ── */
+    .overlay-hamburger-btn {
+      background: none;
+      border: none;
+      font-size: 1.1rem;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 8px;
+      color: #444;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    .overlay-hamburger-btn:hover { background: #f0f0f0; }
 
     /* ── receipt history overlay ── */
     #history-overlay {
@@ -867,14 +846,13 @@
 
 <!-- hamburger dropdown -->
 <div id="hamburger-menu">
-  <div class="hmenu-user">👤 <span id="hmenu-user-code"></span></div>
-  <a href="/grocery" class="hmenu-item">🧾 영수증 분석기</a>
-  <button id="history-btn" class="hmenu-item">📋 영수증 이력</button>
-  <button id="weekly-btn" class="hmenu-item">📅 주간 지출</button>
-  <button id="memory-btn" class="hmenu-item">🧠 기억</button>
-  <button id="reset-btn" class="hmenu-item">🔄 대화 초기화</button>
-  <button id="usage-btn" class="hmenu-item">📊 사용량 확인</button>
-  <button id="logout-btn" class="hmenu-item" style="color:#dc2626;">🚪 로그아웃</button>
+  <div class="hmenu-user"><span id="hmenu-user-code"></span></div>
+  <a href="/grocery" class="hmenu-item">영수증 분석기</a>
+  <button id="history-btn" class="hmenu-item">영수증 이력</button>
+  <button id="weekly-btn" class="hmenu-item">주간 지출</button>
+  <button id="reset-btn" class="hmenu-item">대화 초기화</button>
+  <button id="usage-btn" class="hmenu-item">사용량 확인</button>
+  <button id="logout-btn" class="hmenu-item" style="color:#dc2626;">로그아웃</button>
 </div>
 
 <!-- usage panel -->
@@ -886,16 +864,6 @@
   <div class="usage-row"><span id="turns-label">—</span></div>
 </div>
 
-<!-- memory panel -->
-<div id="memory-panel">
-  <h3>🧠 사용자 정보 메모리</h3>
-  <div id="memory-list"></div>
-  <div class="mem-add-row">
-    <input id="mem-key-input" placeholder="항목 (예: 이름)" />
-    <input id="mem-val-input" placeholder="값 (예: 홍길동)" />
-    <button class="mem-add-btn" id="mem-add-btn">추가</button>
-  </div>
-</div>
 
 <div id="chat-wrap"></div>
 
@@ -937,7 +905,8 @@
 <!-- receipt history overlay -->
 <div id="history-overlay">
   <div class="history-header">
-    <span class="history-title">📋 영수증 이력</span>
+    <button class="overlay-hamburger-btn" id="history-hamburger-btn" title="메뉴">☰</button>
+    <span class="history-title">영수증 이력</span>
     <a href="/grocery" class="history-add-btn">＋ 추가</a>
     <button id="history-del-toggle" class="history-del-toggle">🗑 삭제</button>
     <button id="history-sel-all" class="history-sel-all">전체 선택</button>
@@ -951,7 +920,8 @@
 <!-- weekly overlay -->
 <div id="weekly-overlay">
   <div class="weekly-header">
-    <span class="weekly-title">📅 주간 지출</span>
+    <button class="overlay-hamburger-btn" id="weekly-hamburger-btn" title="메뉴">☰</button>
+    <span class="weekly-title">주간 지출</span>
     <button id="weekly-export-html-btn" class="weekly-export-btn" title="HTML 파일로 저장">HTML</button>
     <button id="weekly-export-pdf-btn" class="weekly-export-btn" title="PDF로 저장 (인쇄)">PDF</button>
     <button id="weekly-close-btn" class="history-close-btn" title="닫기">✕</button>
@@ -994,8 +964,6 @@
   const imgRemoveBtn  = document.getElementById("img-remove-btn");
   const hamburgerBtn  = document.getElementById("hamburger-btn");
   const hamburgerMenu = document.getElementById("hamburger-menu");
-  const memoryPanel   = document.getElementById("memory-panel");
-  const memoryBtn     = document.getElementById("memory-btn");
   const usagePanel    = document.getElementById("usage-panel");
   const usageBtn      = document.getElementById("usage-btn");
 
@@ -1069,29 +1037,25 @@
   // ── hamburger + panel management ──
   function closeAllPanels() {
     hamburgerMenu.classList.remove("open");
-    memoryPanel.classList.remove("open");
     usagePanel.classList.remove("open");
   }
 
-  hamburgerBtn.addEventListener("click", e => {
+  function toggleHamburger(e) {
     e.stopPropagation();
     const wasOpen = hamburgerMenu.classList.contains("open");
     closeAllPanels();
     if (!wasOpen) hamburgerMenu.classList.add("open");
-  });
+  }
 
-  memoryBtn.addEventListener("click", e => {
-    e.stopPropagation();
-    const wasOpen = memoryPanel.classList.contains("open");
-    closeAllPanels();
-    if (!wasOpen) { memoryPanel.classList.add("open"); renderMemory(); }
-  });
+  hamburgerBtn.addEventListener("click", toggleHamburger);
+  document.getElementById("history-hamburger-btn").addEventListener("click", toggleHamburger);
+  document.getElementById("weekly-hamburger-btn").addEventListener("click", toggleHamburger);
 
   usageBtn.addEventListener("click", e => {
     e.stopPropagation();
     const wasOpen = usagePanel.classList.contains("open");
     closeAllPanels();
-    if (!wasOpen) usagePanel.classList.add("open");
+    if (!wasOpen) { usagePanel.classList.add("open"); loadInfo(); }
   });
 
   document.getElementById("reset-btn").addEventListener("click", e => {
@@ -1114,50 +1078,10 @@
 
   // 패널 내부 클릭은 전파 차단
   hamburgerMenu.addEventListener("click", e => e.stopPropagation());
-  memoryPanel.addEventListener("click",   e => e.stopPropagation());
   usagePanel.addEventListener("click",    e => e.stopPropagation());
 
   // 외부 클릭 시 모두 닫기
   document.addEventListener("click", closeAllPanels);
-
-  async function renderMemory() {
-    const mem = await fetch(`/memory?session_id=${SESSION_ID}`).then(r => r.json());
-    const list = document.getElementById("memory-list");
-    list.innerHTML = "";
-    const entries = Object.entries(mem);
-    if (entries.length === 0) {
-      list.innerHTML = '<div id="mem-empty">저장된 정보 없음</div>';
-      return;
-    }
-    entries.forEach(([k, v]) => {
-      const item = document.createElement("div");
-      item.className = "mem-item";
-      item.innerHTML =
-        `<span class="mem-key">${k}</span><span class="mem-val">${v}</span>` +
-        `<button class="mem-del" data-key="${k}" title="삭제">✕</button>`;
-      list.appendChild(item);
-    });
-    list.querySelectorAll(".mem-del").forEach(btn => {
-      btn.addEventListener("click", async () => {
-        await fetch(`/memory/${encodeURIComponent(btn.dataset.key)}?session_id=${SESSION_ID}`, { method: "DELETE" });
-        renderMemory();
-      });
-    });
-  }
-
-  document.getElementById("mem-add-btn").addEventListener("click", async () => {
-    const k = document.getElementById("mem-key-input").value.trim();
-    const v = document.getElementById("mem-val-input").value.trim();
-    if (!k || !v) return;
-    await fetch(`/memory?session_id=${SESSION_ID}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key: k, value: v }),
-    });
-    document.getElementById("mem-key-input").value = "";
-    document.getElementById("mem-val-input").value = "";
-    renderMemory();
-  });
 
   // ── bubble helpers ──
   function addBubble(role, text = "") {
@@ -1211,6 +1135,37 @@
     "|(영수증|구매)\\s*.*(보여|정리|카드|요약|시각)"
   );
 
+  const SESSION_RECEIPT_SUMMARY_RE = new RegExp(
+    "(현재|지금|오늘|세션|이번).*(저장|등록|가져온|올린).*(영수증|내역|구매)" +
+    "|(저장|등록|가져온|올린).*(영수증|내역).*(알려|보여|요약)" +
+    "|현재까지.*영수증|영수증.*내역.*알려줘"
+  );
+
+  async function showSessionReceiptSummary(msg) {
+    const receipts = _getSessionReceipts();
+    const { row: uRow, bubble: uBubble } = addBubble("user");
+    uBubble.textContent = msg;
+    inputEl.value = "";
+
+    if (receipts.length === 0) {
+      const { bubble: aBubble } = addBubble("assistant");
+      aBubble.textContent = "이 세션에서 저장된 영수증이 없어요. 영수증 분석기에서 영수증을 업로드하면 여기서 확인할 수 있어요.";
+      return;
+    }
+
+    renderReceiptsIntoChat(receipts);
+
+    const _summary = receipts.map(r => {
+      const items = (r.items||[]).filter(i=>!i.is_cancelled && i.amount != null && i.amount > 0);
+      const totalLine = r.total ? ` (합계 ${r.total.toLocaleString("ko-KR")}원)` : "";
+      return `[${r.merchant||"알 수 없음"} · ${r.purchase_date||"날짜 미상"}] ${items.length}건${totalLine}`;
+    }).join("\n");
+
+    const totalAmt = receipts.reduce((s, r) => s + (r.total || 0), 0);
+    const prompt = `[이 세션에서 저장한 영수증 ${receipts.length}건]\n${_summary}\n합계: ${totalAmt.toLocaleString("ko-KR")}원\n\n간단히 요약해줘.`;
+    await sendText(prompt);
+  }
+
   async function send() {
     if (streaming) return;
     if (pendingImage) {
@@ -1220,6 +1175,8 @@
       if (!msg) return;
       if (RECEIPT_DELETE_RE.test(msg)) {
         await showReceiptDeleteUI(msg);
+      } else if (SESSION_RECEIPT_SUMMARY_RE.test(msg)) {
+        await showSessionReceiptSummary(msg);
       } else if (RECEIPT_RENDER_RE.test(msg)) {
         await showReceiptCards(msg);
       } else {
@@ -1856,9 +1813,10 @@
 
   // 업체별 고정 색상: 알려진 업체는 지정색, 나머지는 이름 해시로 결정
   const _MERCHANT_FIXED = {
-    "이마트":  "#f59e0b",
-    "쿠팡":    "#0078d4",
-    "네이버":  "#16a34a",
+    "이마트":    "#f59e0b",
+    "쿠팡":      "#dc2626",
+    "네이버":    "#16a34a",
+    "네이버쇼핑": "#16a34a",
   };
   const _MERCHANT_PALETTE = [
     "#dc2626","#7c3aed","#0891b2","#ea580c",
@@ -2083,11 +2041,17 @@
   h1 { font-size: 20px; margin: 0 0 4px; }
   .sub { color: #6b7280; font-size: 13px; margin-bottom: 28px; }
   .foot { font-size: 11px; color: #aaa; text-align: right; margin-top: 32px; }
-  @media print { body { margin: 16px; } }
+  .pdf-save-bar { position: sticky; top: 0; background: #fff; padding: 10px 0 12px; margin-bottom: 20px; display: flex; gap: 8px; border-bottom: 1px solid #e5e7eb; z-index: 10; }
+  .pdf-save-btn { padding: 8px 20px; background: #0078d4; color: #fff; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; }
+  .pdf-save-btn:hover { background: #106ebe; }
+  @media print { .pdf-save-bar { display: none; } body { margin: 16px; } }
 </style>
 </head>
 <body>
-<h1>📅 주간 지출 현황</h1>
+<div class="pdf-save-bar">
+  <button class="pdf-save-btn" onclick="window.print()">PDF 저장</button>
+</div>
+<h1>주간 지출 현황</h1>
 <div class="sub">${fmtFull(fromDate)} ~ ${fmtFull(toDate)} &nbsp;·&nbsp; 합계 <strong>${fmtAmt(totalSpent)}</strong></div>
 ${weeksHtml}
 <div class="foot">출력일: ${new Date().toLocaleDateString("ko-KR")}</div>
@@ -2115,7 +2079,6 @@ ${weeksHtml}
     if (!win) { alert("팝업이 차단되었습니다. 브라우저 설정에서 팝업을 허용해주세요."); return; }
     win.document.write(html);
     win.document.close();
-    win.addEventListener("load", () => { win.focus(); win.print(); });
   });
 
   function _buildHistoryCard(r) {
@@ -2292,10 +2255,21 @@ ${weeksHtml}
   }
   loadChatHistory();
 
+  // ── 세션 내 저장 영수증 누적 (세션 스토리지) ──
+  function _accumulateSessionReceipts(receipts) {
+    try {
+      const prev = JSON.parse(sessionStorage.getItem("sessionSavedReceipts") || "[]");
+      sessionStorage.setItem("sessionSavedReceipts", JSON.stringify([...prev, ...receipts]));
+    } catch(e) {}
+  }
+  function _getSessionReceipts() {
+    try { return JSON.parse(sessionStorage.getItem("sessionSavedReceipts") || "[]"); } catch(e) { return []; }
+  }
+
   // ── grocery_saved 자동 요약 ──
   const _params = new URLSearchParams(window.location.search);
   if (_params.get("grocery_saved")) {
-    history.replaceState({}, "", "/");
+    history.replaceState({}, "", "/chat");
 
     // 구/신 포맷 모두 지원
     let _receipts = [];
@@ -2309,13 +2283,13 @@ ${weeksHtml}
     sessionStorage.removeItem("pendingReceipts");
     sessionStorage.removeItem("pendingReceipt");
 
+    if (_receipts.length > 0) _accumulateSessionReceipts(_receipts);
+
     setTimeout(() => {
-      // 공유 헬퍼(_groupByMerchant, _buildMerchantCard, renderReceiptsIntoChat) 사용
       if (_receipts.length > 0) {
         renderReceiptsIntoChat(_receipts);
       }
 
-      // LLM에 보낼 메시지 (인라인 데이터 포함)
       const _summary = _receipts.map(r => {
         const items = (r.items||[]).filter(i=>!i.is_cancelled && i.amount != null && i.amount > 0);
         const discounts = (r.items||[]).filter(i=>!i.is_cancelled && i.amount != null && i.amount < 0);
@@ -2326,7 +2300,7 @@ ${weeksHtml}
         return `[${r.merchant||"알 수 없음"} · ${r.purchase_date||"날짜 미상"}]\n${lines}${discLine}${totalLine}`;
       }).join("\n\n");
 
-      const msg = `[방금 저장한 영수증]\n${_summary}\n\n이 구매 내역을 보기 좋게 요약하고, 장보기 패턴과 다음에 사면 좋을 것들을 추천해줘.`;
+      const msg = `[방금 저장한 영수증]\n${_summary}\n\n이 구매에서 특별히 메모하거나 확인하고 싶은 게 있나요?`;
       sendText(msg);
     }, 400);
   }

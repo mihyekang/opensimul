@@ -415,14 +415,51 @@
       max-width: 480px;
       margin-bottom: 16px;
     }
-    .topbar-chat-link {
-      font-size: 0.85rem;
-      color: #0078d4;
-      text-decoration: none;
-      font-weight: 500;
-      padding: 4px 0;
+    /* grocery hamburger */
+    #g-hamburger-btn {
+      background: none;
+      border: none;
+      font-size: 1.2rem;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 8px;
+      color: #444;
+      line-height: 1;
     }
-    .topbar-chat-link:hover { text-decoration: underline; }
+    #g-hamburger-btn:hover { background: #f0f0f0; }
+    #g-hamburger-menu {
+      display: none;
+      position: fixed;
+      top: 48px; left: 12px;
+      min-width: 180px;
+      background: #fff;
+      border: 1px solid #e0e0e0;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,.13);
+      z-index: 1000;
+      overflow: hidden;
+    }
+    #g-hamburger-menu.open { display: block; }
+    .g-hmenu-item {
+      display: block;
+      width: 100%;
+      padding: 12px 16px;
+      text-align: left;
+      background: none;
+      border: none;
+      border-bottom: 1px solid #f3f3f3;
+      font-size: 0.88rem;
+      color: #222;
+      cursor: pointer;
+      text-decoration: none;
+      font-family: inherit;
+      transition: background 0.12s;
+    }
+    .g-hmenu-item:last-child { border-bottom: none; }
+    .g-hmenu-item:hover { background: #f7f9fc; }
+    .topbar-chat-link {
+      display: none;  /* 햄버거로 대체 */
+    }
     .topbar-right { display: flex; align-items: center; gap: 8px; }
     #user-bar-code { font-size: 0.8rem; color: #666; }
     #logout-btn {
@@ -636,8 +673,13 @@
 </head>
 <body>
 
+<div id="g-hamburger-menu">
+  <a href="/chat" class="g-hmenu-item">채팅</a>
+  <a href="/grocery" class="g-hmenu-item">영수증 분석기</a>
+</div>
+
 <div class="grocery-topbar">
-  <a href="/chat" class="topbar-chat-link">← 채팅창</a>
+  <button id="g-hamburger-btn" title="메뉴">☰</button>
   <div class="topbar-right">
     <span id="user-bar-code"></span>
     <button id="logout-btn">로그아웃</button>
@@ -801,6 +843,15 @@
     updateUserBar();
     showAuth();
   });
+
+  // grocery 햄버거 메뉴
+  const _gHamBtn  = document.getElementById("g-hamburger-btn");
+  const _gHamMenu = document.getElementById("g-hamburger-menu");
+  _gHamBtn.addEventListener("click", e => {
+    e.stopPropagation();
+    _gHamMenu.classList.toggle("open");
+  });
+  document.addEventListener("click", () => _gHamMenu.classList.remove("open"));
 
   if (!USER_ID) { showAuth(); } else { updateUserBar(); }
 
