@@ -29,7 +29,8 @@
     }
     header h1 { font-size: 1rem; font-weight: 700; color: #1a1a1a; text-align: center; }
     .header-left  { display: flex; align-items: center; }
-    .header-right { display: flex; justify-content: flex-end; }
+    .header-right { display: flex; justify-content: flex-end; align-items: center; }
+    #header-user-code { font-size: 0.75rem; color: #888; }
 
     /* ── hamburger button ── */
     #hamburger-btn {
@@ -908,16 +909,15 @@
     <button id="hamburger-btn" title="메뉴">☰</button>
   </div>
   <h1>영수증 분석</h1>
-  <div class="header-right"></div>
+  <div class="header-right"><span id="header-user-code"></span></div>
 </header>
 
 <!-- hamburger dropdown -->
 <div id="hamburger-menu">
-  <div class="hmenu-user"><span id="hmenu-user-code"></span></div>
   <a href="/grocery" class="hmenu-item">영수증 분석기</a>
-  <a href="/pantry" class="hmenu-item">재고 관리</a>
   <button id="history-btn" class="hmenu-item">영수증 이력</button>
-  <button id="weekly-btn" class="hmenu-item">주간 지출</button>
+  <button id="weekly-btn" class="hmenu-item">주간 지출 분석</button>
+  <a href="/pantry" class="hmenu-item">재고 관리</a>
   <button id="reset-btn" class="hmenu-item">대화 초기화</button>
   <button id="usage-btn" class="hmenu-item">사용량 확인</button>
   <button id="logout-btn" class="hmenu-item" style="color:#dc2626;">로그아웃</button>
@@ -1084,7 +1084,7 @@
     return sid;
   }
   const SESSION_ID = getSessionId();
-  document.getElementById("hmenu-user-code").textContent = USER_CODE;
+  document.getElementById("header-user-code").textContent = USER_CODE;
 
   // ── info ──
   async function loadInfo() {
@@ -2499,6 +2499,11 @@ ${weeksHtml}
       sendText(msg);
     }, 400);
   }
+
+  // URL param: ?panel=history|weekly → auto-open overlay
+  const _urlPanel = new URLSearchParams(location.search).get("panel");
+  if (_urlPanel === "history") openHistoryPanel();
+  else if (_urlPanel === "weekly") openWeeklyPanel();
 </script>
 </body>
 </html>

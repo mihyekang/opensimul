@@ -674,16 +674,19 @@
 <body>
 
 <div id="g-hamburger-menu">
-  <a href="/chat" class="g-hmenu-item">채팅</a>
   <a href="/grocery" class="g-hmenu-item">영수증 분석기</a>
+  <a href="/chat?panel=history" class="g-hmenu-item">영수증 이력</a>
+  <a href="/chat?panel=weekly" class="g-hmenu-item">주간 지출 분석</a>
   <a href="/pantry" class="g-hmenu-item">재고 관리</a>
+  <a href="/chat" class="g-hmenu-item">대화 초기화</a>
+  <a href="/chat" class="g-hmenu-item">사용량 확인</a>
+  <button id="ghm-logout-btn" class="g-hmenu-item" style="color:#dc2626;">로그아웃</button>
 </div>
 
 <div class="grocery-topbar">
   <button id="g-hamburger-btn" title="메뉴">☰</button>
   <div class="topbar-right">
     <span id="user-bar-code"></span>
-    <button id="logout-btn">로그아웃</button>
   </div>
 </div>
 <h1>영수증 가져오기</h1>
@@ -779,13 +782,7 @@
   function hideAuth() { document.getElementById("auth-overlay").classList.remove("visible"); }
 
   function updateUserBar() {
-    if (USER_ID) {
-      document.getElementById("user-bar-code").textContent = `👤 ${USER_ID}`;
-      document.getElementById("logout-btn").style.display = "inline-block";
-    } else {
-      document.getElementById("user-bar-code").textContent = "";
-      document.getElementById("logout-btn").style.display = "none";
-    }
+    document.getElementById("user-bar-code").textContent = USER_ID ? `👤 ${USER_ID}` : "";
   }
 
   document.getElementById("tab-login").addEventListener("click", () => {
@@ -838,16 +835,14 @@
     submitBtn.disabled = false;
   }
 
-  document.getElementById("logout-btn").addEventListener("click", () => {
-    localStorage.removeItem("grocery_user_code");
-    USER_ID = "";
-    updateUserBar();
-    showAuth();
-  });
 
   // grocery 햄버거 메뉴
   const _gHamBtn  = document.getElementById("g-hamburger-btn");
   const _gHamMenu = document.getElementById("g-hamburger-menu");
+  document.getElementById("ghm-logout-btn").addEventListener("click", () => {
+    localStorage.removeItem("grocery_user_code");
+    location.href = "/grocery";
+  });
   _gHamBtn.addEventListener("click", e => {
     e.stopPropagation();
     _gHamMenu.classList.toggle("open");

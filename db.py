@@ -521,6 +521,26 @@ def delete_pantry_item(item_id: int, user_id: str) -> bool:
         conn.commit()
     return deleted
 
+
+def deduct_pantry_qty(user_id: str, keyword: str, qty_used: int) -> dict:
+    """재료 사용 시 현재 수량 차감. GREATEST(0, ...) 으로 음수 방지."""
+    with _get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                UPDATE pantry_items
+                SET current_qty = GREATEST(0, current_qty - %s), updated_at = NOW()
+                WHERE user_id = %s AND raw_name ILIKE %s
+                RETURNING id, raw_name, total_qty, current_qty, unit
+            """, (qty_used, user_id, f"%{keyword}%"))
+            rows = [dict(r) for r in cur.fetchall()]
+        conn.commit()
+    if not rows:
+        return {"updated": False, "keyword": keyword, "message": "해당 품목을 찾을 수 없습니다."}
+    return {
+        "updated": True,
+        "items": [{"name": r["raw_name"], "total_qty": r["total_qty"], "current_qty": r["current_qty"], "unit": r["unit"] or "개"} for r in rows],
+    }
+
 # ── user auth ──────────────────────────────────────────────────────────────────
 
 def _hash_password(password: str) -> str:

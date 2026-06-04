@@ -45,9 +45,12 @@
     }
     #g-hamburger-menu.open { display: block; }
     .g-hmenu-item {
-      display: block; padding: 10px 18px;
+      display: block; padding: 10px 18px; width: 100%;
       font-size: 0.88rem; color: #333; text-decoration: none;
+      background: none; border: none; border-bottom: 1px solid #f3f3f3;
+      text-align: left; cursor: pointer; font-family: inherit;
     }
+    .g-hmenu-item:last-child { border-bottom: none; }
     .g-hmenu-item:hover { background: #f5f6f8; }
 
     #add-btn {
@@ -151,16 +154,19 @@
 <body>
 
 <div id="g-hamburger-menu">
-  <a href="/chat" class="g-hmenu-item">채팅</a>
   <a href="/grocery" class="g-hmenu-item">영수증 분석기</a>
+  <a href="/chat?panel=history" class="g-hmenu-item">영수증 이력</a>
+  <a href="/chat?panel=weekly" class="g-hmenu-item">주간 지출 분석</a>
   <a href="/pantry" class="g-hmenu-item">재고 관리</a>
+  <a href="/chat" class="g-hmenu-item">대화 초기화</a>
+  <a href="/chat" class="g-hmenu-item">사용량 확인</a>
+  <button id="ghm-logout-btn" class="g-hmenu-item" style="color:#dc2626;">로그아웃</button>
 </div>
 
 <div class="grocery-topbar">
   <button id="g-hamburger-btn" title="메뉴">☰</button>
   <div class="topbar-right">
     <span id="user-bar-code"></span>
-    <button id="logout-btn">로그아웃</button>
   </div>
 </div>
 
@@ -236,13 +242,7 @@
   function hideAuth() { document.getElementById("auth-overlay").classList.remove("visible"); }
 
   function updateUserBar() {
-    if (USER_ID) {
-      document.getElementById("user-bar-code").textContent = `👤 ${USER_ID}`;
-      document.getElementById("logout-btn").style.display = "inline-block";
-    } else {
-      document.getElementById("user-bar-code").textContent = "";
-      document.getElementById("logout-btn").style.display = "none";
-    }
+    document.getElementById("user-bar-code").textContent = USER_ID ? `👤 ${USER_ID}` : "";
   }
 
   document.getElementById("tab-login").addEventListener("click", () => {
@@ -292,17 +292,15 @@
     btn.disabled = false;
   }
 
-  document.getElementById("logout-btn").addEventListener("click", () => {
-    localStorage.removeItem("grocery_user_code");
-    USER_ID = "";
-    updateUserBar();
-    showAuth();
-  });
 
   const _hamBtn  = document.getElementById("g-hamburger-btn");
   const _hamMenu = document.getElementById("g-hamburger-menu");
   _hamBtn.addEventListener("click", e => { e.stopPropagation(); _hamMenu.classList.toggle("open"); });
   document.addEventListener("click", () => _hamMenu.classList.remove("open"));
+  document.getElementById("ghm-logout-btn").addEventListener("click", () => {
+    localStorage.removeItem("grocery_user_code");
+    location.href = "/grocery";
+  });
 
   let _items = [];
 

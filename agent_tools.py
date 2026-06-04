@@ -99,6 +99,27 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "update_pantry_current_qty",
+            "description": "재료를 사용/소비했을 때 팬트리 현재 재고를 차감합니다. '계란 3개 썼어', '우유 다 마셨어', '라면 2개 먹었어' 같은 말을 들으면 사용합니다.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "item_name": {
+                        "type": "string",
+                        "description": "차감할 품목명 (예: 계란, 우유)"
+                    },
+                    "qty_used": {
+                        "type": "integer",
+                        "description": "사용한 수량"
+                    }
+                },
+                "required": ["item_name", "qty_used"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "get_pantry_items",
             "description": "냉장고/팬트리 재고 현황을 조회합니다. 특정 재료가 얼마나 남았는지, 재고 현황을 확인할 때 사용합니다.",
             "parameters": {
@@ -131,6 +152,8 @@ def execute_tool(name: str, args: dict, user_id: str) -> Any:
                 args.get("end_date") or date.today().isoformat(),
                 user_id,
             )
+        if name == "update_pantry_current_qty":
+            return db.deduct_pantry_qty(user_id, args["item_name"], args["qty_used"])
         if name == "get_pantry_items":
             return _get_pantry_items(args.get("keyword", ""), user_id)
         return {"error": f"Unknown tool: {name}"}
