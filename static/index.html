@@ -1874,9 +1874,15 @@
         return d.toISOString().slice(0, 10);
       }
 
+      console.log("[weekly] 조회 범위:", fromDate, "~", toDate, "/ 반환 영수증 수:", rows.length);
+      console.table(rows.map(r => ({ id: r.id, merchant: r.merchant, purchase_date: r.purchase_date, total: r.total, is_refund: r.is_refund })));
+
       const weekMap = new Map();
       rows.forEach(r => {
-        if (!r.purchase_date || !r.total) return;
+        if (!r.purchase_date || !r.total) {
+          console.log("[weekly] 제외됨:", r.id, r.merchant, "날짜:", r.purchase_date, "금액:", r.total);
+          return;
+        }
         const wk = weekMonday(r.purchase_date);
         if (!weekMap.has(wk)) weekMap.set(wk, { total: 0, receipts: [] });
         const entry = weekMap.get(wk);
