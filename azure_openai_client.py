@@ -210,6 +210,147 @@ class AzureOpenAIClient:
 
     # ── public chat API ────────────────────────────────────────────────────────
 
+    def chat_with_tools(self, user_message: str, tools: list[dict], tool_executor) -> tuple[str, TurnUsage]:
+        """Agentic tool-use loop. Calls tool_executor(name, args) for each tool call."""
+        self._conversation.append({"role": "user", "content": user_message})
+        total_prompt = 0
+        total_completion = 0
+        for _ in range(5):
+            response = self._client.chat.completions.create(
+                model=self.config.deployment,
+                messages=self._conversation,
+                tools=tools,
+                tool_choice="auto",
+                max_completion_tokens=self.config.max_completion_tokens,
+            )
+            msg = response.choices[0].message
+            total_prompt += response.usage.prompt_tokens
+            total_completion += response.usage.completion_tokens
+
+            if not msg.tool_calls:
+                reply = msg.content or ""
+                self._conversation.append({"role": "assistant", "content": reply})
+                self._trim_history()
+                usage = TurnUsage(prompt_tokens=total_prompt, completion_tokens=total_completion)
+                self._usage_history.append(usage)
+                return reply, usage
+
+            self._conversation.append({
+                "role": "assistant",
+                "content": msg.content,
+                "tool_calls": [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                    }
+                    for tc in msg.tool_calls
+                ],
+            })
+            for tc in msg.tool_calls:
+                try:
+                    args = json.loads(tc.function.arguments or "{}")
+                except json.JSONDecodeError:
+                    args = {}
+                result = tool_executor(tc.function.name, args)
+                self._conversation.append({
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "content": json.dumps(result, ensure_ascii=False, default=str),
+                })
+
+        reply = "죄송합니다, 요청 처리 중 오류가 발생했습니다."
+        self._conversation.append({"role": "assistant", "content": reply})
+        self._trim_history()
+        usage = TurnUsage(prompt_tokens=total_prompt, completion_tokens=total_completion)
+        self._usage_history.append(usage)
+        return reply, usage
+
+    def stream_chat_with_tools(self, user_message: str, tools: list[dict], tool_executor) -> "Iterator[dict]":
+        """Streaming agentic loop. Yields {token: str} and {tool_call: name, args: dict}."""
+        self._conversation.append({"role": "user", "content": user_message})
+        total_prompt = 0
+        total_completion = 0
+
+        for _ in range(5):
+            stream = self._client.chat.completions.create(
+                model=self.config.deployment,
+                messages=self._conversation,
+                tools=tools,
+                tool_choice="auto",
+                max_completion_tokens=self.config.max_completion_tokens,
+                stream=True,
+                stream_options={"include_usage": True},
+            )
+
+            content_parts: list[str] = []
+            tool_calls_acc: dict[int, dict] = {}
+
+            for chunk in stream:
+                if chunk.usage:
+                    total_prompt += chunk.usage.prompt_tokens
+                    total_completion += chunk.usage.completion_tokens
+                if not chunk.choices:
+                    continue
+                delta = chunk.choices[0].delta
+                if delta.content:
+                    content_parts.append(delta.content)
+                    yield {"token": delta.content}
+                if delta.tool_calls:
+                    for tc_d in delta.tool_calls:
+                        idx = tc_d.index
+                        if idx not in tool_calls_acc:
+                            tool_calls_acc[idx] = {
+                                "id": tc_d.id or "",
+                                "type": "function",
+                                "function": {
+                                    "name": tc_d.function.name or "",
+                                    "arguments": tc_d.function.arguments or "",
+                                },
+                            }
+                        else:
+                            entry = tool_calls_acc[idx]
+                            if tc_d.id:
+                                entry["id"] = tc_d.id
+                            if tc_d.function:
+                                if tc_d.function.name:
+                                    entry["function"]["name"] += tc_d.function.name
+                                if tc_d.function.arguments:
+                                    entry["function"]["arguments"] += tc_d.function.arguments
+
+            content = "".join(content_parts)
+            tool_calls = [tool_calls_acc[i] for i in sorted(tool_calls_acc)]
+
+            if not tool_calls:
+                self._conversation.append({"role": "assistant", "content": content})
+                self._trim_history()
+                usage = TurnUsage(prompt_tokens=total_prompt, completion_tokens=total_completion)
+                self._usage_history.append(usage)
+                return
+
+            self._conversation.append({
+                "role": "assistant",
+                "content": content or None,
+                "tool_calls": tool_calls,
+            })
+            for tc in tool_calls:
+                try:
+                    args = json.loads(tc["function"]["arguments"] or "{}")
+                except json.JSONDecodeError:
+                    args = {}
+                yield {"tool_call": tc["function"]["name"], "args": args}
+                result = tool_executor(tc["function"]["name"], args)
+                self._conversation.append({
+                    "role": "tool",
+                    "tool_call_id": tc["id"],
+                    "content": json.dumps(result, ensure_ascii=False, default=str),
+                })
+
+        self._conversation.append({"role": "assistant", "content": ""})
+        self._trim_history()
+        usage = TurnUsage(prompt_tokens=total_prompt, completion_tokens=total_completion)
+        self._usage_history.append(usage)
+
     def chat(self, user_message: str) -> tuple[str, TurnUsage]:
         self._conversation.append({"role": "user", "content": user_message})
         reply, usage = self._call_with_retry(self._conversation)

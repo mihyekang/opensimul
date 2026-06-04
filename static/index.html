@@ -453,6 +453,19 @@
       border-bottom-left-radius: 4px;
     }
     .assistant .bubble.streaming { white-space: pre-wrap; }
+    .tool-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.82em;
+      color: #6b7280;
+      font-style: italic;
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
 
     /* image in user bubble */
     .bubble-img {
@@ -1295,6 +1308,17 @@
       for (const line of lines) {
         if (!line.startsWith("data: ")) continue;
         const payload = JSON.parse(line.slice(6));
+        if (payload.tool_call !== undefined) {
+          const toolNames = {
+            query_spending_by_period: "기간별 지출 조회",
+            query_spending_by_merchant: "업체별 지출 조회",
+            search_items: "품목 검색",
+            get_spending_summary: "지출 요약 집계",
+          };
+          const label = toolNames[payload.tool_call] || payload.tool_call;
+          aBubble.innerHTML = `<span class="tool-status">🔍 ${label} 중...</span>`;
+          rawText = "";
+        }
         if (payload.token !== undefined) {
           rawText += payload.token;
           aBubble.textContent = rawText;

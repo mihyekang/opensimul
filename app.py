@@ -21,6 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 import db
+from agent_tools import TOOLS, execute_tool
 from azure_openai_client import ClientConfig
 from grocery_pass1 import extract_pass1_bytes, extract_pass1_text, validate
 from repl import fetch_usd_to_krw
@@ -294,9 +295,16 @@ async def _inject_grocery_context(c, user_id: str = "") -> None:
 @app.post("/chat")
 async def chat(req: ChatRequest):
     c = _client(req.session_id)
-    await _inject_grocery_context(c, req.user_id or req.session_id)
+    user_id = req.user_id or req.session_id
+    await _inject_grocery_context(c, user_id)
     loop = asyncio.get_event_loop()
-    reply, usage = await loop.run_in_executor(None, lambda: c.chat(req.message))
+    if state.db_enabled and user_id:
+        tool_executor = lambda name, args: execute_tool(name, args, user_id)
+        reply, usage = await loop.run_in_executor(
+            None, lambda: c.chat_with_tools(req.message, TOOLS, tool_executor)
+        )
+    else:
+        reply, usage = await loop.run_in_executor(None, lambda: c.chat(req.message))
     turn_cost_usd = usage.cost(c.config.input_price_per_m, c.config.output_price_per_m)
     await _save_turn(req.session_id, req.message, reply)
     return {"reply": reply, "usage": _build_usage(c, usage, turn_cost_usd)}
@@ -305,28 +313,37 @@ async def chat(req: ChatRequest):
 @app.post("/chat/stream")
 async def chat_stream(req: ChatRequest):
     c = _client(req.session_id)
-    await _inject_grocery_context(c, req.session_id)
+    user_id = req.user_id or req.session_id
+    await _inject_grocery_context(c, user_id)
 
     async def event_generator():
         loop = asyncio.get_event_loop()
-        queue: asyncio.Queue[str | None] = asyncio.Queue()
+        queue: asyncio.Queue[dict | None] = asyncio.Queue()
         collected: list[str] = []
 
         def produce():
             try:
-                for token in c.stream_chat(req.message):
-                    loop.call_soon_threadsafe(queue.put_nowait, token)
+                if state.db_enabled and user_id:
+                    tool_executor = lambda name, args: execute_tool(name, args, user_id)
+                    for item in c.stream_chat_with_tools(req.message, TOOLS, tool_executor):
+                        loop.call_soon_threadsafe(queue.put_nowait, item)
+                else:
+                    for token in c.stream_chat(req.message):
+                        loop.call_soon_threadsafe(queue.put_nowait, {"token": token})
             finally:
                 loop.call_soon_threadsafe(queue.put_nowait, None)
 
         await loop.run_in_executor(None, produce)
 
         while True:
-            token = await queue.get()
-            if token is None:
+            item = await queue.get()
+            if item is None:
                 break
-            collected.append(token)
-            yield f"data: {json.dumps({'token': token})}\n\n"
+            if "token" in item:
+                collected.append(item["token"])
+                yield f"data: {json.dumps({'token': item['token']})}\n\n"
+            elif "tool_call" in item:
+                yield f"data: {json.dumps({'tool_call': item['tool_call'], 'args': item.get('args', {})})}\n\n"
 
         assistant_reply = "".join(collected)
         await _save_turn(req.session_id, req.message, assistant_reply)

@@ -374,6 +374,49 @@ def update_grocery_receipt_meta(receipt_id: int, merchant: str | None, purchase_
     return updated
 
 
+def search_receipts_by_merchant(merchant: str, days: int, user_id: str) -> list[dict]:
+    """업체명 부분 일치로 영수증 검색."""
+    cutoff = (date.today() - timedelta(days=days)).isoformat()
+    with _get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT r.id, r.merchant, r.purchase_date, r.total, r.is_refund,
+                       COUNT(i.id) FILTER (WHERE NOT i.is_cancelled) AS item_count
+                FROM grocery_receipts r
+                LEFT JOIN grocery_items i ON i.receipt_id = r.id
+                WHERE r.merchant ILIKE %s AND r.user_id = %s
+                  AND (r.purchase_date >= %s OR r.purchase_date IS NULL)
+                GROUP BY r.id
+                ORDER BY r.purchase_date DESC, r.id DESC
+            """, (f"%{merchant}%", user_id, cutoff))
+            return [{
+                **dict(r),
+                "purchase_date": r["purchase_date"].isoformat() if r["purchase_date"] else None,
+            } for r in cur.fetchall()]
+
+
+def search_grocery_items(keyword: str, days: int, user_id: str) -> list[dict]:
+    """품목명 키워드로 구매 이력 검색."""
+    cutoff = (date.today() - timedelta(days=days)).isoformat()
+    with _get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT i.id, i.raw_name, i.qty, i.unit_price, i.amount,
+                       r.merchant, r.purchase_date, r.id AS receipt_id
+                FROM grocery_items i
+                JOIN grocery_receipts r ON r.id = i.receipt_id
+                WHERE i.raw_name ILIKE %s AND r.user_id = %s
+                  AND NOT i.is_cancelled
+                  AND (r.purchase_date >= %s OR r.purchase_date IS NULL)
+                ORDER BY r.purchase_date DESC, i.id DESC
+                LIMIT 50
+            """, (f"%{keyword}%", user_id, cutoff))
+            return [{
+                **dict(r),
+                "purchase_date": r["purchase_date"].isoformat() if r["purchase_date"] else None,
+            } for r in cur.fetchall()]
+
+
 def list_analyses(limit: int = 50) -> list[dict]:
     with _get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
