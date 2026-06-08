@@ -170,6 +170,13 @@ class PantryUpdateRequest(BaseModel):
     user_id: str = ""
 
 
+class TrashMoveRequest(BaseModel):
+    user_id: str
+    start_date: str
+    end_date: str
+    merchant: str = ""
+
+
 # ---------- helpers ----------
 
 def _client(session_id: str):
@@ -684,6 +691,75 @@ async def pantry_delete(item_id: int, user_id: str = ""):
     loop = asyncio.get_event_loop()
     deleted = await loop.run_in_executor(None, lambda: db.delete_pantry_item(item_id, user_id))
     return {"ok": deleted}
+
+
+# ---------- trash ----------
+
+@app.get("/trash", response_class=HTMLResponse)
+async def trash_page():
+    with open("static/trash.html", encoding="utf-8") as f:
+        return f.read()
+
+
+@app.get("/trash/preview")
+async def trash_preview(user_id: str = "", start_date: str = "", end_date: str = "", merchant: str = ""):
+    if not state.db_enabled:
+        return {"ok": False}
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(None, lambda: db.preview_for_trash(user_id, start_date, end_date, merchant))
+    return result
+
+
+@app.post("/trash/move")
+async def trash_move(req: TrashMoveRequest):
+    if not state.db_enabled:
+        return {"ok": False}
+    loop = asyncio.get_event_loop()
+    count = await loop.run_in_executor(None, lambda: db.move_to_trash(req.user_id, req.start_date, req.end_date, req.merchant))
+    return {"ok": True, "moved": count}
+
+
+@app.get("/trash/items")
+async def trash_list(user_id: str = "", merchant: str = ""):
+    if not state.db_enabled:
+        return []
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, lambda: db.list_trash_items(user_id, merchant))
+
+
+@app.post("/trash/restore/{trash_id}")
+async def trash_restore(trash_id: int, user_id: str = ""):
+    if not state.db_enabled:
+        return {"ok": False}
+    loop = asyncio.get_event_loop()
+    restored = await loop.run_in_executor(None, lambda: db.restore_trash_item(trash_id, user_id))
+    return {"ok": restored}
+
+
+@app.delete("/trash/items/{trash_id}")
+async def trash_delete_item(trash_id: int, user_id: str = ""):
+    if not state.db_enabled:
+        return {"ok": False}
+    loop = asyncio.get_event_loop()
+    deleted = await loop.run_in_executor(None, lambda: db.delete_trash_item(trash_id, user_id))
+    return {"ok": deleted}
+
+
+@app.delete("/trash/items")
+async def trash_empty(user_id: str = "", merchant: str = ""):
+    if not state.db_enabled:
+        return {"ok": False}
+    loop = asyncio.get_event_loop()
+    count = await loop.run_in_executor(None, lambda: db.empty_trash(user_id, merchant))
+    return {"ok": True, "deleted": count}
+
+
+@app.get("/trash/merchants")
+async def trash_merchants(user_id: str = ""):
+    if not state.db_enabled:
+        return []
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, lambda: db.list_trash_merchants(user_id))
 
 
 # ---------- auth ----------

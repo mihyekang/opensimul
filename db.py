@@ -102,6 +102,19 @@ def init_db() -> None:
             """)
             cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_pantry_user_name ON pantry_items(user_id, raw_name)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_pantry_user ON pantry_items(user_id)")
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS trash_bin (
+                    id            SERIAL PRIMARY KEY,
+                    user_id       TEXT NOT NULL,
+                    origin_table  TEXT NOT NULL DEFAULT 'grocery_receipts',
+                    origin_id     INTEGER NOT NULL,
+                    merchant      TEXT,
+                    purchase_date DATE,
+                    data          JSONB NOT NULL,
+                    deleted_at    TIMESTAMPTZ DEFAULT NOW()
+                )
+            """)
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_trash_user ON trash_bin(user_id, deleted_at DESC)")
         conn.commit()
 
 
@@ -468,12 +481,13 @@ def list_pantry(user_id: str) -> list[dict]:
     with _get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("""
-                SELECT id, raw_name, total_qty, current_qty, unit, updated_at
+                SELECT id, raw_name, total_qty, current_qty, unit, created_at, updated_at
                 FROM pantry_items WHERE user_id = %s
                 ORDER BY updated_at DESC
             """, (user_id,))
             return [{
                 **dict(r),
+                "created_at": r["created_at"].isoformat() if r["created_at"] else None,
                 "updated_at": r["updated_at"].isoformat() if r["updated_at"] else None,
             } for r in cur.fetchall()]
 
@@ -582,3 +596,163 @@ def register_user(user_code: str, password: str) -> bool:
         return True
     except Exception:
         return False
+
+
+# ── trash bin ──────────────────────────────────────────────────────────────────
+
+def _receipt_to_json(cur, receipt_row) -> dict:
+    """Fetch items for a receipt and build the JSON payload for trash_bin."""
+    rid = receipt_row["id"]
+    cur.execute(
+        "SELECT raw_name, qty, unit_price, amount, is_cancelled FROM grocery_items WHERE receipt_id = %s ORDER BY id",
+        (rid,)
+    )
+    items = [dict(r) for r in cur.fetchall()]
+    r = dict(receipt_row)
+    if r.get("purchase_date"):
+        r["purchase_date"] = r["purchase_date"].isoformat()
+    if r.get("created_at"):
+        r["created_at"] = r["created_at"].isoformat()
+    return {"receipt": r, "items": items}
+
+
+def preview_for_trash(user_id: str, start_date: str, end_date: str, merchant: str = "") -> dict:
+    """Return count and total of receipts that would be moved to trash."""
+    with _get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            merchant_cond = "AND merchant ILIKE %s" if merchant else ""
+            params = [user_id, start_date, end_date]
+            if merchant:
+                params.append(f"%{merchant}%")
+            cur.execute(f"""
+                SELECT COUNT(*) AS cnt, COALESCE(SUM(total), 0) AS total_spent,
+                       array_agg(DISTINCT merchant ORDER BY merchant) FILTER (WHERE merchant IS NOT NULL) AS merchants
+                FROM grocery_receipts
+                WHERE user_id = %s AND purchase_date BETWEEN %s AND %s {merchant_cond}
+            """, params)
+            row = dict(cur.fetchone())
+            return {
+                "count": row["cnt"],
+                "total_spent": int(row["total_spent"]),
+                "merchants": row["merchants"] or [],
+            }
+
+
+def move_to_trash(user_id: str, start_date: str, end_date: str, merchant: str = "") -> int:
+    """Move matching receipts to trash_bin. Returns number of receipts moved."""
+    with _get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            merchant_cond = "AND merchant ILIKE %s" if merchant else ""
+            params = [user_id, start_date, end_date]
+            if merchant:
+                params.append(f"%{merchant}%")
+            cur.execute(f"""
+                SELECT id, purchase_date, merchant, total, currency, is_refund, raw_json, user_id, created_at
+                FROM grocery_receipts
+                WHERE user_id = %s AND purchase_date BETWEEN %s AND %s {merchant_cond}
+                ORDER BY id
+            """, params)
+            receipts = cur.fetchall()
+            if not receipts:
+                return 0
+            for r in receipts:
+                data = _receipt_to_json(cur, r)
+                cur.execute("""
+                    INSERT INTO trash_bin (user_id, origin_table, origin_id, merchant, purchase_date, data)
+                    VALUES (%s, 'grocery_receipts', %s, %s, %s, %s)
+                """, (user_id, r["id"], r["merchant"], r["purchase_date"], json.dumps(data, ensure_ascii=False, default=str)))
+            ids = [r["id"] for r in receipts]
+            cur.execute(f"DELETE FROM grocery_receipts WHERE id = ANY(%s)", (ids,))
+        conn.commit()
+    return len(receipts)
+
+
+def list_trash_items(user_id: str, merchant: str = "") -> list[dict]:
+    """List items in trash_bin, newest first."""
+    with _get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            merchant_cond = "AND merchant ILIKE %s" if merchant else ""
+            params = [user_id]
+            if merchant:
+                params.append(f"%{merchant}%")
+            cur.execute(f"""
+                SELECT id, origin_id, merchant, purchase_date, deleted_at,
+                       (data->'receipt'->>'total')::INTEGER AS total,
+                       jsonb_array_length(data->'items') AS item_count
+                FROM trash_bin
+                WHERE user_id = %s {merchant_cond}
+                ORDER BY purchase_date DESC, deleted_at DESC
+            """, params)
+            return [{
+                **dict(r),
+                "purchase_date": r["purchase_date"].isoformat() if r["purchase_date"] else None,
+                "deleted_at": r["deleted_at"].isoformat() if r["deleted_at"] else None,
+            } for r in cur.fetchall()]
+
+
+def restore_trash_item(trash_id: int, user_id: str) -> bool:
+    """Re-insert receipt + items from trash_bin. Returns True if restored."""
+    with _get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT data FROM trash_bin WHERE id = %s AND user_id = %s", (trash_id, user_id))
+            row = cur.fetchone()
+            if not row:
+                return False
+            data = row["data"]
+            rec = data["receipt"]
+            cur.execute("""
+                INSERT INTO grocery_receipts (purchase_date, merchant, total, currency, is_refund, raw_json, user_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id
+            """, (
+                rec.get("purchase_date"),
+                rec.get("merchant"),
+                rec.get("total"),
+                rec.get("currency", "KRW"),
+                rec.get("is_refund", False),
+                json.dumps(rec.get("raw_json") or rec, ensure_ascii=False),
+                user_id,
+            ))
+            new_id = cur.fetchone()["id"]
+            for item in data.get("items", []):
+                cur.execute("""
+                    INSERT INTO grocery_items (receipt_id, raw_name, qty, unit_price, amount, is_cancelled)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (new_id, item["raw_name"], item.get("qty", 1), item.get("unit_price"), item.get("amount"), item.get("is_cancelled", False)))
+            cur.execute("DELETE FROM trash_bin WHERE id = %s AND user_id = %s", (trash_id, user_id))
+        conn.commit()
+    return True
+
+
+def delete_trash_item(trash_id: int, user_id: str) -> bool:
+    """Permanently delete one item from trash_bin."""
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM trash_bin WHERE id = %s AND user_id = %s", (trash_id, user_id))
+            deleted = cur.rowcount > 0
+        conn.commit()
+    return deleted
+
+
+def empty_trash(user_id: str, merchant: str = "") -> int:
+    """Permanently delete all (or merchant-filtered) items from trash_bin. Returns count."""
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            if merchant:
+                cur.execute("DELETE FROM trash_bin WHERE user_id = %s AND merchant ILIKE %s", (user_id, f"%{merchant}%"))
+            else:
+                cur.execute("DELETE FROM trash_bin WHERE user_id = %s", (user_id,))
+            count = cur.rowcount
+        conn.commit()
+    return count
+
+
+def list_trash_merchants(user_id: str) -> list[str]:
+    """Return distinct merchants in trash_bin for this user."""
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT DISTINCT merchant FROM trash_bin
+                WHERE user_id = %s AND merchant IS NOT NULL
+                ORDER BY merchant
+            """, (user_id,))
+            return [r[0] for r in cur.fetchall()]
