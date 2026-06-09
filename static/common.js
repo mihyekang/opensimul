@@ -6,7 +6,7 @@ window.USER_ID = localStorage.getItem("grocery_user_code") || "";
 
 function fmtDate(str) {
   if (!str) return "-";
-  const d = new Date(str + "T00:00:00");
+  const d = new Date(str.slice(0, 10) + "T00:00:00");
   return `${d.getMonth() + 1}/${String(d.getDate()).padStart(2, "0")}`;
 }
 
