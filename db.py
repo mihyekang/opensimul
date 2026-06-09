@@ -289,28 +289,26 @@ def list_grocery_receipts(days: int = 30, user_id: str = "", start_date: str = "
     with _get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(f"""
-                SELECT id, merchant, purchase_date, total, is_refund, created_at, item_count
-                FROM (
-                    SELECT
-                        r.id, r.merchant, r.purchase_date, r.total, r.is_refund, r.created_at,
-                        COUNT(i.id) FILTER (WHERE NOT i.is_cancelled) AS item_count,
-                        ROW_NUMBER() OVER (
-                            PARTITION BY
-                                COALESCE(r.merchant, ''),
-                                r.purchase_date,
-                                COALESCE(r.total, -1),
-                                r.is_refund
-                            ORDER BY r.created_at DESC
-                        ) AS rn
-                    FROM grocery_receipts r
-                    LEFT JOIN grocery_items i ON i.receipt_id = r.id
-                    WHERE (r.purchase_date BETWEEN %s AND %s {null_cond}) AND r.user_id = %s
-                    GROUP BY r.id
-                ) sub
-                WHERE rn = 1
-                ORDER BY purchase_date DESC, created_at DESC
+                SELECT
+                    r.id, r.merchant, r.purchase_date, r.total, r.is_refund, r.created_at,
+                    COUNT(i.id) FILTER (WHERE NOT i.is_cancelled) AS item_count
+                FROM grocery_receipts r
+                LEFT JOIN grocery_items i ON i.receipt_id = r.id
+                WHERE (r.purchase_date BETWEEN %s AND %s {null_cond}) AND r.user_id = %s
+                GROUP BY r.id
+                ORDER BY r.purchase_date DESC, r.created_at DESC
             """, (from_date, to_date, user_id))
-            return [dict(r) for r in cur.fetchall()]
+            rows = cur.fetchall()
+
+        # 중복 제거: (merchant, purchase_date, total, is_refund) 기준, 최신 created_at 우선
+        seen: set = set()
+        deduped = []
+        for r in rows:
+            key = (r["merchant"] or "", str(r["purchase_date"] or ""), str(r["total"] or ""), r["is_refund"])
+            if key not in seen:
+                seen.add(key)
+                deduped.append(r)
+        return [dict(r) for r in deduped]
 
 
 def get_grocery_receipt_detail(receipt_id: int, user_id: str) -> dict | None:
