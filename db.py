@@ -199,19 +199,36 @@ def save_analysis(filename, prompt, analysis, prompt_tokens, completion_tokens, 
 # ── grocery receipts ───────────────────────────────────────────────────────────
 
 def save_grocery_receipt(result: dict, user_id: str = "") -> int:
-    """Pass 1 결과를 DB에 저장. receipt id 반환."""
+    """Pass 1 결과를 DB에 저장. receipt id 반환. 동일 영수증 중복 저장 방지."""
     purchase_date = result.get("purchase_date") or None
+    merchant = result.get("merchant")
+    total = result.get("total")
+    is_refund = result.get("is_refund", False)
     with _get_conn() as conn:
         with conn.cursor() as cur:
+            # 동일한 (user_id, merchant, purchase_date, total, is_refund) 이미 존재하면 기존 ID 반환
+            cur.execute("""
+                SELECT id FROM grocery_receipts
+                WHERE user_id = %s
+                  AND COALESCE(merchant, '') = COALESCE(%s, '')
+                  AND purchase_date IS NOT DISTINCT FROM %s
+                  AND COALESCE(total, -1) = COALESCE(%s, -1)
+                  AND is_refund = %s
+                LIMIT 1
+            """, (user_id, merchant, purchase_date, total, is_refund))
+            existing = cur.fetchone()
+            if existing:
+                return existing[0]
+
             cur.execute("""
                 INSERT INTO grocery_receipts (purchase_date, merchant, total, currency, is_refund, raw_json, user_id)
                 VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id
             """, (
                 purchase_date,
-                result.get("merchant"),
-                result.get("total"),
+                merchant,
+                total,
                 result.get("currency", "KRW"),
-                result.get("is_refund", False),
+                is_refund,
                 json.dumps(result, ensure_ascii=False),
                 user_id,
             ))
@@ -272,14 +289,26 @@ def list_grocery_receipts(days: int = 30, user_id: str = "", start_date: str = "
     with _get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(f"""
-                SELECT
-                    r.id, r.merchant, r.purchase_date, r.total, r.is_refund, r.created_at,
-                    COUNT(i.id) FILTER (WHERE NOT i.is_cancelled) AS item_count
-                FROM grocery_receipts r
-                LEFT JOIN grocery_items i ON i.receipt_id = r.id
-                WHERE (r.purchase_date BETWEEN %s AND %s {null_cond}) AND r.user_id = %s
-                GROUP BY r.id
-                ORDER BY r.purchase_date DESC, r.created_at DESC
+                SELECT id, merchant, purchase_date, total, is_refund, created_at, item_count
+                FROM (
+                    SELECT
+                        r.id, r.merchant, r.purchase_date, r.total, r.is_refund, r.created_at,
+                        COUNT(i.id) FILTER (WHERE NOT i.is_cancelled) AS item_count,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY
+                                COALESCE(r.merchant, ''),
+                                r.purchase_date,
+                                COALESCE(r.total, -1),
+                                r.is_refund
+                            ORDER BY r.created_at DESC
+                        ) AS rn
+                    FROM grocery_receipts r
+                    LEFT JOIN grocery_items i ON i.receipt_id = r.id
+                    WHERE (r.purchase_date BETWEEN %s AND %s {null_cond}) AND r.user_id = %s
+                    GROUP BY r.id
+                ) sub
+                WHERE rn = 1
+                ORDER BY purchase_date DESC, created_at DESC
             """, (from_date, to_date, user_id))
             return [dict(r) for r in cur.fetchall()]
 
