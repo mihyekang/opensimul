@@ -115,6 +115,15 @@ def init_db() -> None:
                 )
             """)
             cur.execute("CREATE INDEX IF NOT EXISTS idx_trash_user ON trash_bin(user_id, deleted_at DESC)")
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS user_sessions (
+                    token       TEXT PRIMARY KEY,
+                    user_code   TEXT NOT NULL,
+                    created_at  TIMESTAMPTZ DEFAULT NOW(),
+                    expires_at  TIMESTAMPTZ NOT NULL
+                )
+            """)
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_user_sessions_code ON user_sessions(user_code)")
         conn.commit()
 
 
@@ -581,6 +590,55 @@ def deduct_pantry_qty(user_id: str, keyword: str, qty_used: int) -> dict:
         "updated": True,
         "items": [{"name": r["raw_name"], "total_qty": r["total_qty"], "current_qty": r["current_qty"], "unit": r["unit"] or "개"} for r in rows],
     }
+
+# ── user sessions ─────────────────────────────────────────────────────────────
+
+_SESSION_TTL_DAYS = 30
+
+
+def create_user_session(user_code: str) -> str:
+    """랜덤 토큰을 생성해 DB에 저장하고 반환."""
+    token = secrets.token_hex(32)
+    expires_at = date.today() + timedelta(days=_SESSION_TTL_DAYS)
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO user_sessions (token, user_code, expires_at) VALUES (%s, %s, %s)",
+                (token, user_code, expires_at),
+            )
+        conn.commit()
+    return token
+
+
+def get_user_from_session(token: str) -> str | None:
+    """토큰으로 user_code 조회. 만료되었거나 없으면 None."""
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT user_code FROM user_sessions WHERE token = %s AND expires_at > NOW()",
+                (token,),
+            )
+            row = cur.fetchone()
+            return row[0] if row else None
+
+
+def delete_user_session(token: str) -> None:
+    """로그아웃 시 토큰 삭제."""
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM user_sessions WHERE token = %s", (token,))
+        conn.commit()
+
+
+def cleanup_expired_user_sessions() -> int:
+    """만료된 세션 토큰 정리. 삭제된 행 수 반환."""
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM user_sessions WHERE expires_at <= NOW()")
+            count = cur.rowcount
+        conn.commit()
+    return count
+
 
 # ── user auth ──────────────────────────────────────────────────────────────────
 
