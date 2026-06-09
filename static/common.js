@@ -98,5 +98,19 @@ function initCommonUI({ onLogin } = {}) {
   }
 
   updateUserBar();
-  if (!window.USER_ID) showAuth(); else if (onLogin) onLogin();
+  if (!window.USER_ID) {
+    showAuth();
+  } else {
+    // Verify the sid cookie is still valid. If not, force re-login.
+    fetch("/auth/session").then(r => r.json()).then(data => {
+      if (!data.user_id) {
+        localStorage.removeItem("grocery_user_code");
+        window.USER_ID = "";
+        updateUserBar();
+        showAuth();
+      } else if (onLogin) {
+        onLogin();
+      }
+    }).catch(() => { if (onLogin) onLogin(); });
+  }
 }

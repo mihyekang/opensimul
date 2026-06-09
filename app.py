@@ -786,3 +786,8 @@ async def auth_register(req: AuthRequest, response: Response):
 async def auth_logout(response: Response):
     response.delete_cookie("sid", path="/")
     return {"ok": True}
+
+
+@app.get("/auth/session")
+async def auth_session(sid: str = Cookie(default="", alias="sid")):
+    return {"user_id": sid}
