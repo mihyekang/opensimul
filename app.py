@@ -15,10 +15,10 @@ from datetime import date
 import fitz  # PyMuPDF
 from PIL import Image, ImageOps
 
-from fastapi import Cookie, FastAPI, File, Form, HTTPException, Response, UploadFile, Body
+from fastapi import Cookie, FastAPI, File, Form, HTTPException, Query, Response, UploadFile, Body
 from fastapi.responses import HTMLResponse, StreamingResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 import db
 from agent_tools import TOOLS, execute_tool
@@ -95,8 +95,8 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # ---------- models ----------
 
 class AuthRequest(BaseModel):
-    user_code: str
-    password: str
+    user_code: str = Field(min_length=1, max_length=64)
+    password: str = Field(min_length=1, max_length=128)
 
 
 class ChatRequest(BaseModel):
@@ -125,21 +125,21 @@ class GroceryUpdateRequest(BaseModel):
 
 
 class GroceryItemAddRequest(BaseModel):
-    raw_name: str
+    raw_name: str = Field(min_length=1, max_length=200)
     qty: int = 1
     unit_price: int | None = None
     amount: int | None = None
 
 
 class GroceryItemUpdateRequest(BaseModel):
-    raw_name: str | None = None
+    raw_name: str | None = Field(default=None, max_length=200)
     qty: int | None = None
     unit_price: int | None = None
     amount: int | None = None
 
 
 class TextExtractRequest(BaseModel):
-    text: str
+    text: str = Field(max_length=20_000)
 
 
 class ChatNoteRequest(BaseModel):
@@ -149,17 +149,17 @@ class ChatNoteRequest(BaseModel):
 
 
 class PantryAddRequest(BaseModel):
-    raw_name: str
+    raw_name: str = Field(min_length=1, max_length=200)
     total_qty: int = 0
     current_qty: int = 0
-    unit: str = "개"
+    unit: str = Field(default="개", max_length=20)
 
 
 class PantryUpdateRequest(BaseModel):
-    raw_name: str | None = None
+    raw_name: str | None = Field(default=None, max_length=200)
     total_qty: int | None = None
     current_qty: int | None = None
-    unit: str | None = None
+    unit: str | None = Field(default=None, max_length=20)
 
 
 class TrashMoveRequest(BaseModel):
@@ -172,6 +172,16 @@ class TrashMoveRequest(BaseModel):
 
 def _client(session_id: str):
     return state.session_manager.get_client(session_id)
+
+
+def _validate_date(s: str, field: str) -> None:
+    """ISO 날짜 형식(YYYY-MM-DD) 검증. 잘못된 형식이면 400 반환."""
+    if not s:
+        return
+    try:
+        date.fromisoformat(s)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"invalid_date: {field}")
 
 
 def _build_purchase_summary(rows: list[dict]) -> str:
@@ -371,7 +381,7 @@ async def chat_stream(req: ChatRequest, sid: str = Cookie(default="", alias="sid
 
 
 @app.get("/chat/history")
-async def chat_history(session_id: str = "", limit: int = 40):
+async def chat_history(session_id: str = "", limit: int = Query(default=40, ge=1, le=200)):
     """이전 대화 이력 반환 (UI 복원용)."""
     if not state.db_enabled or not session_id:
         return []
@@ -448,6 +458,8 @@ async def grocery_extract(image: UploadFile = File(...)):
     # PDF → JPEG 변환 (첫 페이지, 150 DPI)
     if mime_type == "application/pdf" or (image.filename or "").lower().endswith(".pdf"):
         doc = fitz.open(stream=content, filetype="pdf")
+        if len(doc) == 0:
+            raise HTTPException(status_code=400, detail="pdf_empty")
         pix = doc[0].get_pixmap(dpi=150)
         content = pix.tobytes("jpeg")
         mime_type = "image/jpeg"
@@ -511,8 +523,15 @@ async def grocery_save(req: GrocerySaveRequest, sid: str = Cookie(default="", al
 
 
 @app.get("/grocery/history")
-async def grocery_history(days: int = 30, start_date: str = "", end_date: str = "", sid: str = Cookie(default="", alias="sid")):
+async def grocery_history(
+    days: int = Query(default=30, ge=1, le=365),
+    start_date: str = "",
+    end_date: str = "",
+    sid: str = Cookie(default="", alias="sid"),
+):
     """최근 N일 구매 이력 반환."""
+    _validate_date(start_date, "start_date")
+    _validate_date(end_date, "end_date")
     if not state.db_enabled:
         return []
     loop = asyncio.get_event_loop()
@@ -526,7 +545,7 @@ async def grocery_history(days: int = 30, start_date: str = "", end_date: str = 
 
 
 @app.get("/grocery/recent")
-async def grocery_recent(days: int = 90, sid: str = Cookie(default="", alias="sid")):
+async def grocery_recent(days: int = Query(default=90, ge=1, le=365), sid: str = Cookie(default="", alias="sid")):
     """카드 렌더링용: 최근 N일 구매 이력 (품목 포함)."""
     if not state.db_enabled:
         return []
@@ -605,37 +624,6 @@ async def grocery_update_item(item_id: int, req: GroceryItemUpdateRequest, sid: 
     return {"ok": updated}
 
 
-@app.get("/grocery/debug")
-async def grocery_debug():
-    """DB 연결 상태 및 최근 영수증 확인용 엔드포인트."""
-    if not state.db_enabled:
-        return {"db_enabled": False}
-    loop = asyncio.get_event_loop()
-    try:
-        rows = await loop.run_in_executor(None, lambda: db.list_grocery_receipts(30))
-        for r in rows:
-            if r.get("purchase_date"):
-                r["purchase_date"] = r["purchase_date"].isoformat()
-            if r.get("created_at"):
-                r["created_at"] = r["created_at"].isoformat()
-        return {"db_enabled": True, "receipt_count": len(rows), "receipts": rows}
-    except Exception as e:
-        logger.exception("grocery_debug 오류")
-        return {"db_enabled": True, "error": str(e)}
-
-
-@app.get("/analyses")
-async def analyses():
-    if not state.db_enabled:
-        return []
-    loop = asyncio.get_event_loop()
-    rows = await loop.run_in_executor(None, db.list_analyses)
-    for r in rows:
-        if r.get("created_at"):
-            r["created_at"] = r["created_at"].isoformat()
-        if r.get("cost_usd"):
-            r["cost_usd"] = float(r["cost_usd"])
-    return rows
 
 
 # ---------- pantry ----------
@@ -694,6 +682,8 @@ async def trash_page():
 
 @app.get("/trash/preview")
 async def trash_preview(start_date: str = "", end_date: str = "", merchant: str = "", sid: str = Cookie(default="", alias="sid")):
+    _validate_date(start_date, "start_date")
+    _validate_date(end_date, "end_date")
     if not state.db_enabled:
         return {"ok": False}
     loop = asyncio.get_event_loop()
@@ -703,6 +693,8 @@ async def trash_preview(start_date: str = "", end_date: str = "", merchant: str 
 
 @app.post("/trash/move")
 async def trash_move(req: TrashMoveRequest, sid: str = Cookie(default="", alias="sid")):
+    _validate_date(req.start_date, "start_date")
+    _validate_date(req.end_date, "end_date")
     if not state.db_enabled:
         return {"ok": False}
     loop = asyncio.get_event_loop()

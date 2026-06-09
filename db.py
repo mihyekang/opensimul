@@ -726,7 +726,7 @@ def restore_trash_item(trash_id: int, user_id: str) -> bool:
             if not row:
                 return False
             data = row["data"]
-            rec = data["receipt"]
+            rec = data.get("receipt") or data
             cur.execute("""
                 INSERT INTO grocery_receipts (purchase_date, merchant, total, currency, is_refund, raw_json, user_id)
                 VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id
