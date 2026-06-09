@@ -1029,6 +1029,14 @@
   if (!_authCode) { window.location.replace("/grocery"); }
   const USER_CODE = _authCode || "";
 
+  // sid 쿠키 유효성 검증 — 없으면 재로그인
+  fetch("/auth/session").then(r => r.json()).then(data => {
+    if (!data.user_id) {
+      localStorage.removeItem("grocery_user_code");
+      window.location.replace("/grocery");
+    }
+  }).catch(() => {});
+
   marked.setOptions({
     highlight: (code, lang) => {
       const language = hljs.getLanguage(lang) ? lang : "plaintext";
