@@ -743,6 +743,7 @@
   </div>
 </div>
 
+<script src="/static/common.js"></script>
 <script>
   const dropZone        = document.getElementById("drop-zone");
   const fileInput       = document.getElementById("file-input");
@@ -776,83 +777,7 @@
     imgSection.style.display = "none";
   });
 
-  // ── auth ──
-  let authMode = "login";
-  let USER_ID  = localStorage.getItem("grocery_user_code") || "";
-
-  function showAuth() { document.getElementById("auth-overlay").classList.add("visible"); }
-  function hideAuth() { document.getElementById("auth-overlay").classList.remove("visible"); }
-
-  function updateUserBar() {
-    document.getElementById("user-bar-code").textContent = USER_ID ? `👤 ${USER_ID}` : "";
-  }
-
-  document.getElementById("tab-login").addEventListener("click", () => {
-    authMode = "login";
-    document.getElementById("tab-login").classList.add("active");
-    document.getElementById("tab-register").classList.remove("active");
-    document.getElementById("auth-submit-btn").textContent = "로그인";
-    document.getElementById("auth-error-msg").textContent = "";
-  });
-  document.getElementById("tab-register").addEventListener("click", () => {
-    authMode = "register";
-    document.getElementById("tab-register").classList.add("active");
-    document.getElementById("tab-login").classList.remove("active");
-    document.getElementById("auth-submit-btn").textContent = "회원가입";
-    document.getElementById("auth-error-msg").textContent = "";
-  });
-
-  document.getElementById("auth-submit-btn").addEventListener("click", submitAuth);
-  document.getElementById("auth-pass-input").addEventListener("keydown", e => { if (e.key === "Enter") submitAuth(); });
-
-  async function submitAuth() {
-    const code     = document.getElementById("auth-code-input").value.trim();
-    const pass     = document.getElementById("auth-pass-input").value;
-    const errMsg   = document.getElementById("auth-error-msg");
-    const submitBtn = document.getElementById("auth-submit-btn");
-    if (!code || !pass) { errMsg.textContent = "코드와 비밀번호를 입력하세요."; return; }
-    submitBtn.disabled = true;
-    errMsg.textContent = "";
-    try {
-      const url  = authMode === "login" ? "/auth/login" : "/auth/register";
-      const resp = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_code: code, password: pass }),
-      });
-      const data = await resp.json();
-      if (data.ok) {
-        localStorage.setItem("grocery_user_code", data.user_code);
-        USER_ID = data.user_code;
-        updateUserBar();
-        hideAuth();
-      } else if (data.reason === "already_exists") {
-        errMsg.textContent = "이미 사용 중인 코드입니다. 다른 코드를 선택하세요.";
-      } else {
-        errMsg.textContent = authMode === "login" ? "코드 또는 비밀번호가 맞지 않습니다." : "오류가 발생했습니다.";
-      }
-    } catch (e) {
-      errMsg.textContent = "네트워크 오류가 발생했습니다.";
-    }
-    submitBtn.disabled = false;
-  }
-
-
-  // grocery 햄버거 메뉴
-  const _gHamBtn  = document.getElementById("g-hamburger-btn");
-  const _gHamMenu = document.getElementById("g-hamburger-menu");
-  document.getElementById("ghm-logout-btn").addEventListener("click", async () => {
-    await fetch("/auth/logout", { method: "POST" });
-    localStorage.removeItem("grocery_user_code");
-    location.href = "/grocery";
-  });
-  _gHamBtn.addEventListener("click", e => {
-    e.stopPropagation();
-    _gHamMenu.classList.toggle("open");
-  });
-  document.addEventListener("click", () => _gHamMenu.classList.remove("open"));
-
-  if (!USER_ID) { showAuth(); } else { updateUserBar(); }
+  initCommonUI();
 
   let selectedFiles = [];
   let extractedResults = []; // { result, filename, saved } for save tracking
