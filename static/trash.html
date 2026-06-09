@@ -301,7 +301,8 @@
   const _hamMenu = document.getElementById("g-hamburger-menu");
   _hamBtn.addEventListener("click", e => { e.stopPropagation(); _hamMenu.classList.toggle("open"); });
   document.addEventListener("click", () => _hamMenu.classList.remove("open"));
-  document.getElementById("ghm-logout-btn").addEventListener("click", () => {
+  document.getElementById("ghm-logout-btn").addEventListener("click", async () => {
+    await fetch("/auth/logout", { method: "POST" });
     localStorage.removeItem("grocery_user_code");
     location.href = "/grocery";
   });
@@ -317,7 +318,7 @@
     const e = document.getElementById("move-end").value;
     const m = document.getElementById("move-merchant").value.trim();
     if (!s || !e) { alert("기간을 입력하세요."); return; }
-    const params = new URLSearchParams({ user_id: USER_ID, start_date: s, end_date: e, merchant: m });
+    const params = new URLSearchParams({ start_date: s, end_date: e, merchant: m });
     const res = await fetch(`/trash/preview?${params}`);
     const data = await res.json();
     const el = document.getElementById("preview-result");
@@ -339,7 +340,7 @@
     if (!confirm(`${s} ~ ${e}${m ? " [" + m + "]" : ""} 영수증을 휴지통으로 이동할까요?`)) return;
     const res = await fetch("/trash/move", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_id: USER_ID, start_date: s, end_date: e, merchant: m }),
+      body: JSON.stringify({ start_date: s, end_date: e, merchant: m }),
     });
     const data = await res.json();
     document.getElementById("preview-result").style.display = "none";
@@ -351,7 +352,7 @@
     const m = document.getElementById("trash-merchant-filter").value;
     const label = m ? `[${m}] ` : "";
     if (!confirm(`${label}휴지통의 모든 항목을 영구삭제할까요? 복원이 불가능합니다.`)) return;
-    const params = new URLSearchParams({ user_id: USER_ID, merchant: m });
+    const params = new URLSearchParams({ merchant: m });
     await fetch(`/trash/items?${params}`, { method: "DELETE" });
     loadTrash();
   });
@@ -362,14 +363,14 @@
     if (!USER_ID) return;
     await loadMerchants();
     const m = document.getElementById("trash-merchant-filter").value;
-    const params = new URLSearchParams({ user_id: USER_ID, merchant: m });
+    const params = new URLSearchParams({ merchant: m });
     const res = await fetch(`/trash/items?${params}`);
     const items = await res.json();
     renderTrash(items);
   }
 
   async function loadMerchants() {
-    const res = await fetch(`/trash/merchants?user_id=${encodeURIComponent(USER_ID)}`);
+    const res = await fetch(`/trash/merchants`);
     const merchants = await res.json();
     const sel = document.getElementById("trash-merchant-filter");
     const cur = sel.value;
@@ -411,14 +412,14 @@
 
   async function restoreItem(id) {
     if (!confirm("이 영수증을 복원할까요?")) return;
-    const res = await fetch(`/trash/restore/${id}?user_id=${encodeURIComponent(USER_ID)}`, { method: "POST" });
+    const res = await fetch(`/trash/restore/${id}`, { method: "POST" });
     const data = await res.json();
     if (data.ok) loadTrash(); else alert("복원에 실패했습니다.");
   }
 
   async function permDelete(id) {
     if (!confirm("영구삭제할까요? 복원이 불가능합니다.")) return;
-    await fetch(`/trash/items/${id}?user_id=${encodeURIComponent(USER_ID)}`, { method: "DELETE" });
+    await fetch(`/trash/items/${id}`, { method: "DELETE" });
     loadTrash();
   }
 

@@ -841,7 +841,8 @@
   // grocery 햄버거 메뉴
   const _gHamBtn  = document.getElementById("g-hamburger-btn");
   const _gHamMenu = document.getElementById("g-hamburger-menu");
-  document.getElementById("ghm-logout-btn").addEventListener("click", () => {
+  document.getElementById("ghm-logout-btn").addEventListener("click", async () => {
+    await fetch("/auth/logout", { method: "POST" });
     localStorage.removeItem("grocery_user_code");
     location.href = "/grocery";
   });
@@ -996,7 +997,7 @@
       const resp = await fetch("/grocery/extract-text", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, user_id: USER_ID }),
+        body: JSON.stringify({ text }),
       });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data = await resp.json();
@@ -1056,7 +1057,7 @@
         const resp = await fetch("/grocery/save", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ result: entry.result, user_id: USER_ID }),
+          body: JSON.stringify({ result: entry.result }),
         });
         const data = await resp.json();
         if (data.ok || data.reason === "db_not_enabled") entry.saved = true;
@@ -1144,7 +1145,7 @@
           const resp = await fetch("/grocery/save", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ result: entry.result, user_id: USER_ID }),
+            body: JSON.stringify({ result: entry.result }),
           });
           const d = await resp.json();
           if (d.ok || d.reason === "db_not_enabled") {

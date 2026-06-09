@@ -1147,8 +1147,9 @@
     resetChat();
   });
 
-  document.getElementById("logout-btn").addEventListener("click", e => {
+  document.getElementById("logout-btn").addEventListener("click", async e => {
     e.stopPropagation();
+    await fetch("/auth/logout", { method: "POST" });
     localStorage.removeItem("grocery_user_code");
     window.location.href = "/grocery";
   });
@@ -1317,7 +1318,7 @@
     const resp = await fetch("/chat/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: msg, session_id: SESSION_ID, user_id: USER_CODE }),
+      body: JSON.stringify({ message: msg, session_id: SESSION_ID }),
     });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 
@@ -1364,7 +1365,7 @@
     const resp = await fetch("/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: msg, session_id: SESSION_ID, user_id: USER_CODE }),
+      body: JSON.stringify({ message: msg, session_id: SESSION_ID }),
     });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
@@ -1549,7 +1550,7 @@
     inputEl.style.height = "auto";
     addBubble("user", msg);
     try {
-      const rows = await fetch(`/grocery/history?days=365&user_id=${encodeURIComponent(USER_CODE)}`).then(r => r.json());
+      const rows = await fetch(`/grocery/history?days=365`).then(r => r.json());
       if (!rows || rows.length === 0) {
         const { bubble } = addBubble("assistant");
         bubble.textContent = "삭제할 영수증이 없어요. 영수증 분석기에서 먼저 영수증을 저장해보세요 🧾";
@@ -1606,7 +1607,7 @@
         delBtn.textContent = "삭제 중…";
         try {
           const resp = await fetch(
-            `/grocery/receipt/${r.id}?user_id=${encodeURIComponent(USER_CODE)}`,
+            `/grocery/receipt/${r.id}`,
             { method: "DELETE" }
           );
           const data = await resp.json();
@@ -1651,7 +1652,7 @@
     inputEl.style.height = "auto";
     addBubble("user", msg);
     try {
-      const rows = await fetch(`/grocery/recent?days=90&user_id=${encodeURIComponent(USER_CODE)}`).then(r => r.json());
+      const rows = await fetch(`/grocery/recent?days=90`).then(r => r.json());
       if (!rows || rows.length === 0) {
         const { bubble } = addBubble("assistant");
         bubble.textContent = "저장된 영수증이 없어요. 영수증 분석기에서 먼저 영수증을 저장해보세요 🧾";
@@ -1738,7 +1739,7 @@
     const ids = [..._historySelected];
     for (const id of ids) {
       try {
-        const resp = await fetch(`/grocery/receipt/${id}?user_id=${encodeURIComponent(USER_CODE)}`, { method: "DELETE" });
+        const resp = await fetch(`/grocery/receipt/${id}`, { method: "DELETE" });
         const data = await resp.json();
         if (data.ok) {
           const d = _historySelectedData.get(id);
@@ -1831,7 +1832,7 @@
     document.getElementById("receipt-edit-overlay").style.display = "flex";
 
     try {
-      const detail = await fetch(`/grocery/receipt/${receiptId}?user_id=${encodeURIComponent(USER_CODE)}`).then(r => r.json());
+      const detail = await fetch(`/grocery/receipt/${receiptId}`).then(r => r.json());
       _editOriginalItems = detail.items || [];
       list.innerHTML = "";
       _editOriginalItems.forEach(item => list.appendChild(_makeEditItemRow(item)));
@@ -1871,12 +1872,12 @@
       await fetch(`/grocery/receipt/${_editingReceiptId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ merchant, purchase_date: date, total: newTotal || null, user_id: USER_CODE }),
+        body: JSON.stringify({ merchant, purchase_date: date, total: newTotal || null }),
       });
 
       // 2. 삭제된 품목
       for (const id of _editDeletedIds) {
-        await fetch(`/grocery/item/${id}?user_id=${encodeURIComponent(USER_CODE)}`, { method: "DELETE" });
+        await fetch(`/grocery/item/${id}`, { method: "DELETE" });
       }
 
       // 3. 기존 품목 수정 / 신규 품목 추가
@@ -1891,13 +1892,13 @@
           await fetch(`/grocery/receipt/${_editingReceiptId}/item`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ raw_name: rawName, qty, amount, user_id: USER_CODE }),
+            body: JSON.stringify({ raw_name: rawName, qty, amount }),
           });
         } else {
           await fetch(`/grocery/item/${id}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ raw_name: rawName, qty, amount, user_id: USER_CODE }),
+            body: JSON.stringify({ raw_name: rawName, qty, amount }),
           });
         }
       }
@@ -1933,11 +1934,11 @@
     // 날짜 범위가 주어지면 해당 기간 영수증만 조회, 없으면 전체(365일)
     let url;
     if (startDate && endDate) {
-      url = `/grocery/history?start_date=${startDate}&end_date=${endDate}&user_id=${encodeURIComponent(USER_CODE)}`;
+      url = `/grocery/history?start_date=${startDate}&end_date=${endDate}`;
       const fmtD = s => { const d = new Date(s + "T00:00:00"); return `${d.getMonth()+1}/${d.getDate()}`; };
       titleEl.textContent = `📋 영수증 이력 (${fmtD(startDate)}~${fmtD(endDate)})`;
     } else {
-      url = `/grocery/history?days=365&user_id=${encodeURIComponent(USER_CODE)}`;
+      url = `/grocery/history?days=365`;
       titleEl.textContent = "📋 영수증 이력";
     }
 
@@ -2070,7 +2071,7 @@
     titleEl.textContent = "📅 주간 지출 (불러오는 중…)";
 
     try {
-      const url = `/grocery/history?user_id=${encodeURIComponent(USER_CODE)}&start_date=${fromDate}&end_date=${toDate}`;
+      const url = `/grocery/history?start_date=${fromDate}&end_date=${toDate}`;
       const rows = await fetch(url).then(r => r.json());
       content.innerHTML = "";
 
@@ -2410,7 +2411,7 @@ ${weeksHtml}
     detailEl.innerHTML = '<p style="font-size:0.8rem;color:#aaa;padding:4px 0">불러오는 중…</p>';
     try {
       const data = await fetch(
-        `/grocery/receipt/${receiptId}?user_id=${encodeURIComponent(USER_CODE)}`
+        `/grocery/receipt/${receiptId}`
       ).then(r => r.json());
       detailEl.innerHTML = "";
       detailEl.dataset.loaded = "1";

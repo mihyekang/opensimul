@@ -15,7 +15,7 @@ from datetime import date
 import fitz  # PyMuPDF
 from PIL import Image, ImageOps
 
-from fastapi import FastAPI, File, Form, UploadFile, Body, HTTPException
+from fastapi import Cookie, FastAPI, File, Form, HTTPException, Response, UploadFile, Body
 from fastapi.responses import HTMLResponse, StreamingResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -102,7 +102,6 @@ class AuthRequest(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     session_id: str = ""
-    user_id: str = ""  # grocery_user_code
 
 
 class ResetRequest(BaseModel):
@@ -117,14 +116,12 @@ class MemorySetRequest(BaseModel):
 
 class GrocerySaveRequest(BaseModel):
     result: dict
-    user_id: str = ""
 
 
 class GroceryUpdateRequest(BaseModel):
     merchant: str | None = None
     purchase_date: str | None = None
     total: int | None = None
-    user_id: str = ""
 
 
 class GroceryItemAddRequest(BaseModel):
@@ -132,7 +129,6 @@ class GroceryItemAddRequest(BaseModel):
     qty: int = 1
     unit_price: int | None = None
     amount: int | None = None
-    user_id: str = ""
 
 
 class GroceryItemUpdateRequest(BaseModel):
@@ -140,12 +136,10 @@ class GroceryItemUpdateRequest(BaseModel):
     qty: int | None = None
     unit_price: int | None = None
     amount: int | None = None
-    user_id: str = ""
 
 
 class TextExtractRequest(BaseModel):
     text: str
-    user_id: str = ""
 
 
 class ChatNoteRequest(BaseModel):
@@ -159,7 +153,6 @@ class PantryAddRequest(BaseModel):
     total_qty: int = 0
     current_qty: int = 0
     unit: str = "개"
-    user_id: str = ""
 
 
 class PantryUpdateRequest(BaseModel):
@@ -167,11 +160,9 @@ class PantryUpdateRequest(BaseModel):
     total_qty: int | None = None
     current_qty: int | None = None
     unit: str | None = None
-    user_id: str = ""
 
 
 class TrashMoveRequest(BaseModel):
-    user_id: str
     start_date: str
     end_date: str
     merchant: str = ""
@@ -238,7 +229,7 @@ async def _save_turn(session_id: str, user_msg: str, assistant_msg: str):
 
 @app.get("/")
 async def index():
-    return RedirectResponse(url="/grocery")
+    return RedirectResponse(url="/chat")
 
 
 @app.get("/chat", response_class=HTMLResponse)
@@ -316,9 +307,9 @@ async def _inject_grocery_context(c, user_id: str = "") -> None:
 
 
 @app.post("/chat")
-async def chat(req: ChatRequest):
+async def chat(req: ChatRequest, sid: str = Cookie(default="", alias="sid")):
     c = _client(req.session_id)
-    user_id = req.user_id or req.session_id
+    user_id = sid or req.session_id
     await _inject_grocery_context(c, user_id)
     loop = asyncio.get_event_loop()
     if state.db_enabled and user_id:
@@ -334,9 +325,9 @@ async def chat(req: ChatRequest):
 
 
 @app.post("/chat/stream")
-async def chat_stream(req: ChatRequest):
+async def chat_stream(req: ChatRequest, sid: str = Cookie(default="", alias="sid")):
     c = _client(req.session_id)
-    user_id = req.user_id or req.session_id
+    user_id = sid or req.session_id
     await _inject_grocery_context(c, user_id)
 
     async def event_generator():
@@ -494,16 +485,16 @@ async def grocery_extract_text(req: TextExtractRequest):
 
 
 @app.post("/grocery/save")
-async def grocery_save(req: GrocerySaveRequest):
+async def grocery_save(req: GrocerySaveRequest, sid: str = Cookie(default="", alias="sid")):
     """Pass 1 추출 결과를 DB에 저장."""
     if not state.db_enabled:
         return {"ok": False, "reason": "db_not_enabled"}
     from pantry_utils import infer_qty
     loop = asyncio.get_event_loop()
     receipt_id = await loop.run_in_executor(
-        None, lambda: db.save_grocery_receipt(req.result, req.user_id)
+        None, lambda: db.save_grocery_receipt(req.result, sid)
     )
-    if req.user_id:
+    if sid:
         for item in req.result.get("items", []):
             if item.get("is_cancelled"):
                 continue
@@ -514,18 +505,18 @@ async def grocery_save(req: GrocerySaveRequest):
                 continue
             qty, unit = infer_qty(raw, item.get("qty") or 1)
             await loop.run_in_executor(
-                None, lambda r=raw, q=qty, u=unit: db.upsert_pantry_from_purchase(req.user_id, r, q, u)
+                None, lambda r=raw, q=qty, u=unit: db.upsert_pantry_from_purchase(sid, r, q, u)
             )
     return {"ok": True, "receipt_id": receipt_id}
 
 
 @app.get("/grocery/history")
-async def grocery_history(days: int = 30, user_id: str = "", start_date: str = "", end_date: str = ""):
+async def grocery_history(days: int = 30, start_date: str = "", end_date: str = "", sid: str = Cookie(default="", alias="sid")):
     """최근 N일 구매 이력 반환."""
     if not state.db_enabled:
         return []
     loop = asyncio.get_event_loop()
-    rows = await loop.run_in_executor(None, lambda: db.list_grocery_receipts(days, user_id, start_date, end_date))
+    rows = await loop.run_in_executor(None, lambda: db.list_grocery_receipts(days, sid, start_date, end_date))
     for r in rows:
         if r.get("purchase_date"):
             r["purchase_date"] = r["purchase_date"].isoformat()
@@ -535,67 +526,67 @@ async def grocery_history(days: int = 30, user_id: str = "", start_date: str = "
 
 
 @app.get("/grocery/recent")
-async def grocery_recent(days: int = 90, user_id: str = ""):
+async def grocery_recent(days: int = 90, sid: str = Cookie(default="", alias="sid")):
     """카드 렌더링용: 최근 N일 구매 이력 (품목 포함)."""
     if not state.db_enabled:
         return []
     loop = asyncio.get_event_loop()
-    rows = await loop.run_in_executor(None, lambda: db.get_recent_groceries(days, user_id))
+    rows = await loop.run_in_executor(None, lambda: db.get_recent_groceries(days, sid))
     return rows
 
 
 @app.get("/grocery/receipt/{receipt_id}")
-async def grocery_get_receipt(receipt_id: int, user_id: str = ""):
+async def grocery_get_receipt(receipt_id: int, sid: str = Cookie(default="", alias="sid")):
     """영수증 상세 조회 (소유자만 가능)."""
     if not state.db_enabled:
         raise HTTPException(status_code=503, detail="db_not_enabled")
     loop = asyncio.get_event_loop()
-    row = await loop.run_in_executor(None, lambda: db.get_grocery_receipt_detail(receipt_id, user_id))
+    row = await loop.run_in_executor(None, lambda: db.get_grocery_receipt_detail(receipt_id, sid))
     if row is None:
         raise HTTPException(status_code=404, detail="not_found")
     return row
 
 
 @app.delete("/grocery/receipt/{receipt_id}")
-async def grocery_delete_receipt(receipt_id: int, user_id: str = ""):
+async def grocery_delete_receipt(receipt_id: int, sid: str = Cookie(default="", alias="sid")):
     """영수증 삭제 (소유자만 가능)."""
     if not state.db_enabled:
         return {"ok": False, "reason": "db_not_enabled"}
     loop = asyncio.get_event_loop()
-    deleted = await loop.run_in_executor(None, lambda: db.delete_grocery_receipt(receipt_id, user_id))
+    deleted = await loop.run_in_executor(None, lambda: db.delete_grocery_receipt(receipt_id, sid))
     return {"ok": deleted, "reason": None if deleted else "not_found"}
 
 
 @app.patch("/grocery/receipt/{receipt_id}")
-async def grocery_update_receipt(receipt_id: int, req: GroceryUpdateRequest):
+async def grocery_update_receipt(receipt_id: int, req: GroceryUpdateRequest, sid: str = Cookie(default="", alias="sid")):
     """영수증 메타데이터 수정 (merchant, purchase_date)."""
     if not state.db_enabled:
         return {"ok": False, "reason": "db_not_enabled"}
     loop = asyncio.get_event_loop()
     updated = await loop.run_in_executor(
-        None, lambda: db.update_grocery_receipt_meta(receipt_id, req.merchant, req.purchase_date, req.user_id, req.total)
+        None, lambda: db.update_grocery_receipt_meta(receipt_id, req.merchant, req.purchase_date, sid, req.total)
     )
     return {"ok": updated, "reason": None if updated else "not_found"}
 
 
 @app.delete("/grocery/item/{item_id}")
-async def grocery_delete_item(item_id: int, user_id: str = ""):
+async def grocery_delete_item(item_id: int, sid: str = Cookie(default="", alias="sid")):
     """품목 삭제."""
     if not state.db_enabled:
         return {"ok": False}
     loop = asyncio.get_event_loop()
-    deleted = await loop.run_in_executor(None, lambda: db.delete_grocery_item(item_id, user_id))
+    deleted = await loop.run_in_executor(None, lambda: db.delete_grocery_item(item_id, sid))
     return {"ok": deleted}
 
 
 @app.post("/grocery/receipt/{receipt_id}/item")
-async def grocery_add_item(receipt_id: int, req: GroceryItemAddRequest):
+async def grocery_add_item(receipt_id: int, req: GroceryItemAddRequest, sid: str = Cookie(default="", alias="sid")):
     """품목 추가."""
     if not state.db_enabled:
         raise HTTPException(status_code=503, detail="db_not_enabled")
     loop = asyncio.get_event_loop()
     item = await loop.run_in_executor(None, lambda: db.add_grocery_item(
-        receipt_id, req.raw_name, req.qty, req.unit_price, req.amount, req.user_id
+        receipt_id, req.raw_name, req.qty, req.unit_price, req.amount, sid
     ))
     if item is None:
         raise HTTPException(status_code=404, detail="receipt_not_found")
@@ -603,13 +594,13 @@ async def grocery_add_item(receipt_id: int, req: GroceryItemAddRequest):
 
 
 @app.put("/grocery/item/{item_id}")
-async def grocery_update_item(item_id: int, req: GroceryItemUpdateRequest):
+async def grocery_update_item(item_id: int, req: GroceryItemUpdateRequest, sid: str = Cookie(default="", alias="sid")):
     """품목 수정."""
     if not state.db_enabled:
         return {"ok": False}
     loop = asyncio.get_event_loop()
     updated = await loop.run_in_executor(None, lambda: db.update_grocery_item(
-        item_id, req.raw_name, req.qty, req.unit_price, req.amount, req.user_id
+        item_id, req.raw_name, req.qty, req.unit_price, req.amount, sid
     ))
     return {"ok": updated}
 
@@ -656,40 +647,40 @@ async def pantry_page():
 
 
 @app.get("/pantry/items")
-async def pantry_list(user_id: str = ""):
+async def pantry_list(sid: str = Cookie(default="", alias="sid")):
     if not state.db_enabled:
         return []
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, lambda: db.list_pantry(user_id))
+    return await loop.run_in_executor(None, lambda: db.list_pantry(sid))
 
 
 @app.post("/pantry/items")
-async def pantry_add(req: PantryAddRequest):
+async def pantry_add(req: PantryAddRequest, sid: str = Cookie(default="", alias="sid")):
     if not state.db_enabled:
         raise HTTPException(status_code=503, detail="db_not_enabled")
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(
-        None, lambda: db.add_pantry_item(req.user_id, req.raw_name, req.total_qty, req.current_qty, req.unit)
+        None, lambda: db.add_pantry_item(sid, req.raw_name, req.total_qty, req.current_qty, req.unit)
     )
 
 
 @app.put("/pantry/items/{item_id}")
-async def pantry_update(item_id: int, req: PantryUpdateRequest):
+async def pantry_update(item_id: int, req: PantryUpdateRequest, sid: str = Cookie(default="", alias="sid")):
     if not state.db_enabled:
         return {"ok": False}
     loop = asyncio.get_event_loop()
     updated = await loop.run_in_executor(
-        None, lambda: db.update_pantry_item(item_id, req.user_id, req.raw_name, req.total_qty, req.current_qty, req.unit)
+        None, lambda: db.update_pantry_item(item_id, sid, req.raw_name, req.total_qty, req.current_qty, req.unit)
     )
     return {"ok": updated}
 
 
 @app.delete("/pantry/items/{item_id}")
-async def pantry_delete(item_id: int, user_id: str = ""):
+async def pantry_delete(item_id: int, sid: str = Cookie(default="", alias="sid")):
     if not state.db_enabled:
         return {"ok": False}
     loop = asyncio.get_event_loop()
-    deleted = await loop.run_in_executor(None, lambda: db.delete_pantry_item(item_id, user_id))
+    deleted = await loop.run_in_executor(None, lambda: db.delete_pantry_item(item_id, sid))
     return {"ok": deleted}
 
 
@@ -702,81 +693,96 @@ async def trash_page():
 
 
 @app.get("/trash/preview")
-async def trash_preview(user_id: str = "", start_date: str = "", end_date: str = "", merchant: str = ""):
+async def trash_preview(start_date: str = "", end_date: str = "", merchant: str = "", sid: str = Cookie(default="", alias="sid")):
     if not state.db_enabled:
         return {"ok": False}
     loop = asyncio.get_event_loop()
-    result = await loop.run_in_executor(None, lambda: db.preview_for_trash(user_id, start_date, end_date, merchant))
+    result = await loop.run_in_executor(None, lambda: db.preview_for_trash(sid, start_date, end_date, merchant))
     return result
 
 
 @app.post("/trash/move")
-async def trash_move(req: TrashMoveRequest):
+async def trash_move(req: TrashMoveRequest, sid: str = Cookie(default="", alias="sid")):
     if not state.db_enabled:
         return {"ok": False}
     loop = asyncio.get_event_loop()
-    count = await loop.run_in_executor(None, lambda: db.move_to_trash(req.user_id, req.start_date, req.end_date, req.merchant))
+    count = await loop.run_in_executor(None, lambda: db.move_to_trash(sid, req.start_date, req.end_date, req.merchant))
     return {"ok": True, "moved": count}
 
 
 @app.get("/trash/items")
-async def trash_list(user_id: str = "", merchant: str = ""):
+async def trash_list(merchant: str = "", sid: str = Cookie(default="", alias="sid")):
     if not state.db_enabled:
         return []
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, lambda: db.list_trash_items(user_id, merchant))
+    return await loop.run_in_executor(None, lambda: db.list_trash_items(sid, merchant))
 
 
 @app.post("/trash/restore/{trash_id}")
-async def trash_restore(trash_id: int, user_id: str = ""):
+async def trash_restore(trash_id: int, sid: str = Cookie(default="", alias="sid")):
     if not state.db_enabled:
         return {"ok": False}
     loop = asyncio.get_event_loop()
-    restored = await loop.run_in_executor(None, lambda: db.restore_trash_item(trash_id, user_id))
+    restored = await loop.run_in_executor(None, lambda: db.restore_trash_item(trash_id, sid))
     return {"ok": restored}
 
 
 @app.delete("/trash/items/{trash_id}")
-async def trash_delete_item(trash_id: int, user_id: str = ""):
+async def trash_delete_item(trash_id: int, sid: str = Cookie(default="", alias="sid")):
     if not state.db_enabled:
         return {"ok": False}
     loop = asyncio.get_event_loop()
-    deleted = await loop.run_in_executor(None, lambda: db.delete_trash_item(trash_id, user_id))
+    deleted = await loop.run_in_executor(None, lambda: db.delete_trash_item(trash_id, sid))
     return {"ok": deleted}
 
 
 @app.delete("/trash/items")
-async def trash_empty(user_id: str = "", merchant: str = ""):
+async def trash_empty(merchant: str = "", sid: str = Cookie(default="", alias="sid")):
     if not state.db_enabled:
         return {"ok": False}
     loop = asyncio.get_event_loop()
-    count = await loop.run_in_executor(None, lambda: db.empty_trash(user_id, merchant))
+    count = await loop.run_in_executor(None, lambda: db.empty_trash(sid, merchant))
     return {"ok": True, "deleted": count}
 
 
 @app.get("/trash/merchants")
-async def trash_merchants(user_id: str = ""):
+async def trash_merchants(sid: str = Cookie(default="", alias="sid")):
     if not state.db_enabled:
         return []
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, lambda: db.list_trash_merchants(user_id))
+    return await loop.run_in_executor(None, lambda: db.list_trash_merchants(sid))
 
 
 # ---------- auth ----------
 
+_COOKIE_OPTS = dict(httponly=True, samesite="lax", max_age=30 * 24 * 3600, path="/")
+
+
 @app.post("/auth/login")
-async def auth_login(req: AuthRequest):
+async def auth_login(req: AuthRequest, response: Response):
     if not state.db_enabled:
+        response.set_cookie("sid", req.user_code, **_COOKIE_OPTS)
         return {"ok": True, "user_code": req.user_code}
     loop = asyncio.get_event_loop()
     ok = await loop.run_in_executor(None, lambda: db.login_user(req.user_code, req.password))
+    if ok:
+        response.set_cookie("sid", req.user_code, **_COOKIE_OPTS)
     return {"ok": ok, "user_code": req.user_code if ok else None, "reason": None if ok else "invalid"}
 
 
 @app.post("/auth/register")
-async def auth_register(req: AuthRequest):
+async def auth_register(req: AuthRequest, response: Response):
     if not state.db_enabled:
+        response.set_cookie("sid", req.user_code, **_COOKIE_OPTS)
         return {"ok": True, "user_code": req.user_code}
     loop = asyncio.get_event_loop()
     ok = await loop.run_in_executor(None, lambda: db.register_user(req.user_code, req.password))
+    if ok:
+        response.set_cookie("sid", req.user_code, **_COOKIE_OPTS)
     return {"ok": ok, "user_code": req.user_code if ok else None, "reason": None if ok else "already_exists"}
+
+
+@app.post("/auth/logout")
+async def auth_logout(response: Response):
+    response.delete_cookie("sid", path="/")
+    return {"ok": True}

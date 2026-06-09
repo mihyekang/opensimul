@@ -357,7 +357,8 @@
   const _hamMenu = document.getElementById("g-hamburger-menu");
   _hamBtn.addEventListener("click", e => { e.stopPropagation(); _hamMenu.classList.toggle("open"); });
   document.addEventListener("click", () => _hamMenu.classList.remove("open"));
-  document.getElementById("ghm-logout-btn").addEventListener("click", () => {
+  document.getElementById("ghm-logout-btn").addEventListener("click", async () => {
+    await fetch("/auth/logout", { method: "POST" });
     localStorage.removeItem("grocery_user_code");
     location.href = "/grocery";
   });
@@ -367,7 +368,7 @@
   async function loadPantry() {
     if (!USER_ID) return;
     try {
-      const res = await fetch(`/pantry/items?user_id=${encodeURIComponent(USER_ID)}`);
+      const res = await fetch(`/pantry/items`);
       _items = await res.json();
       renderTable();
     } catch (e) { console.error(e); }
@@ -491,12 +492,12 @@
     if (editingId === null) {
       await fetch("/pantry/items", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ raw_name: name, total_qty: total, current_qty: current, unit, user_id: USER_ID }),
+        body: JSON.stringify({ raw_name: name, total_qty: total, current_qty: current, unit }),
       });
     } else {
       await fetch(`/pantry/items/${editingId}`, {
         method: "PUT", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ raw_name: name, total_qty: total, current_qty: current, unit, user_id: USER_ID }),
+        body: JSON.stringify({ raw_name: name, total_qty: total, current_qty: current, unit }),
       });
     }
     closeEdit();
@@ -505,7 +506,7 @@
 
   async function delItem(id) {
     if (!confirm("삭제할까요?")) return;
-    await fetch(`/pantry/items/${id}?user_id=${encodeURIComponent(USER_ID)}`, { method: "DELETE" });
+    await fetch(`/pantry/items/${id}`, { method: "DELETE" });
     loadPantry();
   }
 
