@@ -185,8 +185,12 @@ async def get_current_user(sid: str = Cookie(default="", alias="sid")) -> str:
     if not state.db_enabled:
         return sid
     loop = asyncio.get_event_loop()
-    user_id = await loop.run_in_executor(None, lambda: db.get_user_from_session(sid))
-    return user_id or ""
+    try:
+        user_id = await loop.run_in_executor(None, lambda: db.get_user_from_session(sid))
+        return user_id or ""
+    except Exception:
+        logger.exception("세션 조회 실패")
+        return ""
 
 
 def _validate_date(s: str, field: str) -> None:
