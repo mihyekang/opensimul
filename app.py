@@ -770,28 +770,28 @@ _COOKIE_OPTS = dict(httponly=True, samesite="lax", max_age=30 * 24 * 3600, path=
 @app.post("/auth/login")
 async def auth_login(req: AuthRequest, response: Response):
     if not state.db_enabled:
-        response.set_cookie("user_id", req.user_code, **_COOKIE_OPTS)
+        response.set_cookie("sid", req.user_code, **_COOKIE_OPTS)
         return {"ok": True, "user_code": req.user_code}
     loop = asyncio.get_event_loop()
     ok = await loop.run_in_executor(None, lambda: db.login_user(req.user_code, req.password))
     if not ok:
         return {"ok": False, "user_code": None, "reason": "invalid"}
     token = await loop.run_in_executor(None, lambda: db.create_user_session(req.user_code))
-    response.set_cookie("user_id", token, **_COOKIE_OPTS)
+    response.set_cookie("sid", token, **_COOKIE_OPTS)
     return {"ok": True, "user_code": req.user_code}
 
 
 @app.post("/auth/register")
 async def auth_register(req: AuthRequest, response: Response):
     if not state.db_enabled:
-        response.set_cookie("user_id", req.user_code, **_COOKIE_OPTS)
+        response.set_cookie("sid", req.user_code, **_COOKIE_OPTS)
         return {"ok": True, "user_code": req.user_code}
     loop = asyncio.get_event_loop()
     ok = await loop.run_in_executor(None, lambda: db.register_user(req.user_code, req.password))
     if not ok:
         return {"ok": False, "user_code": None, "reason": "already_exists"}
     token = await loop.run_in_executor(None, lambda: db.create_user_session(req.user_code))
-    response.set_cookie("user_id", token, **_COOKIE_OPTS)
+    response.set_cookie("sid", token, **_COOKIE_OPTS)
     return {"ok": True, "user_code": req.user_code}
 
 
