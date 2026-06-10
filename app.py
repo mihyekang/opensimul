@@ -9,16 +9,17 @@ import io
 import json
 import logging
 import os
+import time
 from contextlib import asynccontextmanager
 from datetime import date
 
 import fitz  # PyMuPDF
 from PIL import Image, ImageOps
 
-from fastapi import Cookie, Depends, FastAPI, File, Form, HTTPException, Query, Response, UploadFile, Body
+from fastapi import Cookie, Depends, FastAPI, File, Form, HTTPException, Query, Response, UploadFile
 from fastapi.responses import HTMLResponse, StreamingResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 import db
 from agent_tools import TOOLS, execute_tool
@@ -99,6 +100,18 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 class AuthRequest(BaseModel):
     user_code: str = Field(min_length=1, max_length=64)
     password: str = Field(min_length=1, max_length=128)
+
+
+class RegisterRequest(BaseModel):
+    user_code: str = Field(min_length=1, max_length=64)
+    password: str = Field(min_length=8, max_length=128)
+
+    @field_validator("password")
+    @classmethod
+    def _check_password_complexity(cls, v: str) -> str:
+        if not any(c.islower() for c in v) or not any(c.isupper() for c in v):
+            raise ValueError("비밀번호는 대문자와 소문자를 포함해야 합니다")
+        return v
 
 
 class ChatRequest(BaseModel):
@@ -641,8 +654,6 @@ async def grocery_update_item(item_id: int, req: GroceryItemUpdateRequest, user_
     return {"ok": updated}
 
 
-
-
 # ---------- pantry ----------
 
 @app.get("/pantry", response_class=HTMLResponse)
@@ -766,23 +777,45 @@ async def trash_merchants(user_id: str = Depends(get_current_user)):
 
 _COOKIE_OPTS = dict(httponly=True, samesite="lax", max_age=30 * 24 * 3600, path="/")
 
+_LOGIN_MAX_ATTEMPTS = 5
+_LOGIN_WINDOW_SECONDS = 15 * 60
+_login_attempts: dict[str, list[float]] = {}
+
+
+def _check_rate_limit(user_code: str) -> bool:
+    now = time.time()
+    attempts = [t for t in _login_attempts.get(user_code, []) if now - t < _LOGIN_WINDOW_SECONDS]
+    if attempts:
+        _login_attempts[user_code] = attempts
+    else:
+        _login_attempts.pop(user_code, None)
+    return len(attempts) < _LOGIN_MAX_ATTEMPTS
+
+
+def _record_failed_attempt(user_code: str) -> None:
+    _login_attempts.setdefault(user_code, []).append(time.time())
+
 
 @app.post("/auth/login")
 async def auth_login(req: AuthRequest, response: Response):
     if not state.db_enabled:
         response.set_cookie("sid", req.user_code, **_COOKIE_OPTS)
         return {"ok": True, "user_code": req.user_code}
+    if not _check_rate_limit(req.user_code):
+        raise HTTPException(status_code=429, detail="too_many_attempts")
     loop = asyncio.get_event_loop()
     ok = await loop.run_in_executor(None, lambda: db.login_user(req.user_code, req.password))
     if not ok:
+        _record_failed_attempt(req.user_code)
         return {"ok": False, "user_code": None, "reason": "invalid"}
+    _login_attempts.pop(req.user_code, None)
     token = await loop.run_in_executor(None, lambda: db.create_user_session(req.user_code))
     response.set_cookie("sid", token, **_COOKIE_OPTS)
     return {"ok": True, "user_code": req.user_code}
 
 
 @app.post("/auth/register")
-async def auth_register(req: AuthRequest, response: Response):
+async def auth_register(req: RegisterRequest, response: Response):
     if not state.db_enabled:
         response.set_cookie("sid", req.user_code, **_COOKIE_OPTS)
         return {"ok": True, "user_code": req.user_code}

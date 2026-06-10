@@ -392,10 +392,18 @@ def add_grocery_item(receipt_id: int, raw_name: str, qty: int, unit_price: int |
 def update_grocery_item(item_id: int, raw_name: str | None, qty: int | None, unit_price: int | None, amount: int | None, user_id: str) -> bool:
     """품목 수정. 영수증 소유자만 가능."""
     updates, params = [], []
-    if raw_name  is not None: updates.append("raw_name = %s");   params.append(raw_name)
-    if qty       is not None: updates.append("qty = %s");        params.append(qty)
-    if unit_price is not None: updates.append("unit_price = %s"); params.append(unit_price)
-    if amount    is not None: updates.append("amount = %s");     params.append(amount)
+    if raw_name is not None:
+        updates.append("raw_name = %s")
+        params.append(raw_name)
+    if qty is not None:
+        updates.append("qty = %s")
+        params.append(qty)
+    if unit_price is not None:
+        updates.append("unit_price = %s")
+        params.append(unit_price)
+    if amount is not None:
+        updates.append("amount = %s")
+        params.append(amount)
     if not updates:
         return False
     params.extend([item_id, user_id])
@@ -492,8 +500,6 @@ def list_analyses(limit: int = 50) -> list[dict]:
             return [dict(r) for r in cur.fetchall()]
 
 
-
-
 # ── pantry ─────────────────────────────────────────────────────────────────────
 
 def upsert_pantry_from_purchase(user_id: str, raw_name: str, qty: int, unit: str) -> None:
@@ -547,10 +553,18 @@ def add_pantry_item(user_id: str, raw_name: str, total_qty: int, current_qty: in
 
 def update_pantry_item(item_id: int, user_id: str, raw_name: str | None, total_qty: int | None, current_qty: int | None, unit: str | None) -> bool:
     updates, params = [], []
-    if raw_name   is not None: updates.append("raw_name = %s");    params.append(raw_name)
-    if total_qty  is not None: updates.append("total_qty = %s");   params.append(total_qty)
-    if current_qty is not None: updates.append("current_qty = %s"); params.append(current_qty)
-    if unit       is not None: updates.append("unit = %s");        params.append(unit)
+    if raw_name is not None:
+        updates.append("raw_name = %s")
+        params.append(raw_name)
+    if total_qty is not None:
+        updates.append("total_qty = %s")
+        params.append(total_qty)
+    if current_qty is not None:
+        updates.append("current_qty = %s")
+        params.append(current_qty)
+    if unit is not None:
+        updates.append("unit = %s")
+        params.append(unit)
     if not updates:
         return False
     updates.append("updated_at = NOW()")
@@ -642,16 +656,23 @@ def cleanup_expired_user_sessions() -> int:
 
 # ── user auth ──────────────────────────────────────────────────────────────────
 
+_PBKDF2_ITERATIONS = 300_000
+
+
 def _hash_password(password: str) -> str:
     salt = secrets.token_hex(16)
-    h = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 100_000)
-    return f"{salt}:{h.hex()}"
+    h = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), _PBKDF2_ITERATIONS)
+    return f"{_PBKDF2_ITERATIONS}:{salt}:{h.hex()}"
 
 
 def _verify_password(password: str, stored: str) -> bool:
     try:
-        salt, h = stored.split(":", 1)
-        check = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 100_000)
+        parts = stored.split(":")
+        if len(parts) == 3:
+            iterations, salt, h = int(parts[0]), parts[1], parts[2]
+        else:
+            iterations, salt, h = 100_000, parts[0], parts[1]
+        check = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), iterations)
         return secrets.compare_digest(check.hex(), h)
     except Exception:
         return False
@@ -679,7 +700,7 @@ def register_user(user_code: str, password: str) -> bool:
                 )
             conn.commit()
         return True
-    except Exception:
+    except psycopg2.errors.UniqueViolation:
         return False
 
 
