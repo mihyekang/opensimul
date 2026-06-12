@@ -124,6 +124,15 @@ def init_db() -> None:
                 )
             """)
             cur.execute("CREATE INDEX IF NOT EXISTS idx_user_sessions_code ON user_sessions(user_code)")
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS push_tokens (
+                    token      TEXT PRIMARY KEY,
+                    user_code  TEXT NOT NULL,
+                    platform   TEXT NOT NULL DEFAULT 'ios',
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                )
+            """)
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_push_tokens_user ON push_tokens(user_code)")
         conn.commit()
 
 
@@ -652,6 +661,28 @@ def cleanup_expired_user_sessions() -> int:
             count = cur.rowcount
         conn.commit()
     return count
+
+
+# ── push notifications ───────────────────────────────────────────────────────
+
+def register_push_token(user_code: str, token: str, platform: str) -> None:
+    """디바이스 푸시 토큰 등록(이미 있으면 사용자/플랫폼 갱신)."""
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO push_tokens (token, user_code, platform)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (token) DO UPDATE SET user_code = %s, platform = %s
+            """, (token, user_code, platform, user_code, platform))
+        conn.commit()
+
+
+def list_push_tokens(user_code: str) -> list[str]:
+    """사용자에게 등록된 모든 디바이스 푸시 토큰 조회."""
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT token FROM push_tokens WHERE user_code = %s", (user_code,))
+            return [row[0] for row in cur.fetchall()]
 
 
 # ── user auth ──────────────────────────────────────────────────────────────────

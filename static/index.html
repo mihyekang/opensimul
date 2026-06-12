@@ -1023,6 +1023,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="/static/native.js"></script>
 <script>
   // ── auth guard ──
   const _authCode = localStorage.getItem("grocery_user_code");
@@ -1034,6 +1035,8 @@
     if (!data.user_id) {
       localStorage.removeItem("grocery_user_code");
       window.location.replace("/grocery");
+    } else {
+      initPushNotifications();
     }
   }).catch(() => {});
 
@@ -1064,16 +1067,31 @@
   let pendingImage = null;
 
   // ── image picker ──
-  imgBtn.addEventListener("click", () => fileInput.click());
+  imgBtn.addEventListener("click", async () => {
+    if (isNativeApp()) {
+      try {
+        const nativeFile = await captureOrPickImage();
+        if (nativeFile) setPendingImage(nativeFile);
+      } catch {
+        // 사용자가 취소한 경우 등 - 무시
+      }
+      return;
+    }
+    fileInput.click();
+  });
   fileInput.addEventListener("change", () => {
     const file = fileInput.files[0];
     if (!file) return;
+    setPendingImage(file);
+    fileInput.value = "";
+  });
+
+  function setPendingImage(file) {
     pendingImage = file;
     previewImg.src = URL.createObjectURL(file);
     previewName.textContent = file.name;
     previewWrap.classList.add("visible");
-    fileInput.value = "";
-  });
+  }
   imgRemoveBtn.addEventListener("click", clearImage);
 
   function clearImage() {
@@ -2290,15 +2308,17 @@ ${weeksHtml}
 </html>`;
   }
 
-  document.getElementById("weekly-export-html-btn").addEventListener("click", () => {
+  document.getElementById("weekly-export-html-btn").addEventListener("click", async () => {
     const html = _buildWeeklyExportHtml();
     if (!html) return;
     const { fromDate, toDate } = _weeklyExportData;
+    const filename = `주간지출_${fromDate}_${toDate}.html`;
+    if (await saveAndShareFile(filename, html, "text/html")) return;
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `주간지출_${fromDate}_${toDate}.html`;
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
   });

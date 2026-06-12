@@ -61,6 +61,7 @@ function initCommonUI({ onLogin } = {}) {
         window.USER_ID = data.user_code;
         updateUserBar();
         hideAuth();
+        if (typeof initPushNotifications === "function") initPushNotifications();
         if (onLogin) onLogin();
       } else if (data.reason === "already_exists") {
         errMsg.textContent = "이미 사용 중인 코드입니다. 다른 코드를 선택하세요.";
@@ -108,8 +109,9 @@ function initCommonUI({ onLogin } = {}) {
         window.USER_ID = "";
         updateUserBar();
         showAuth();
-      } else if (onLogin) {
-        onLogin();
+      } else {
+        if (typeof initPushNotifications === "function") initPushNotifications();
+        if (onLogin) onLogin();
       }
     }).catch(() => { if (onLogin) onLogin(); });
   }

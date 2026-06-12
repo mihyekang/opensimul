@@ -114,6 +114,11 @@ class RegisterRequest(BaseModel):
         return v
 
 
+class PushTokenRequest(BaseModel):
+    token: str = Field(min_length=1, max_length=512)
+    platform: str = Field(default="ios", max_length=16)
+
+
 class ChatRequest(BaseModel):
     message: str
     session_id: str = ""
@@ -840,3 +845,14 @@ async def auth_logout(response: Response, sid: str = Cookie(default="", alias="s
 @app.get("/auth/session")
 async def auth_session(user_id: str = Depends(get_current_user)):
     return {"user_id": user_id}
+
+
+@app.post("/push/register")
+async def push_register(req: PushTokenRequest, user_id: str = Depends(get_current_user)):
+    if not user_id:
+        raise HTTPException(status_code=401, detail="unauthorized")
+    if not state.db_enabled:
+        return {"ok": True}
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, lambda: db.register_push_token(user_id, req.token, req.platform))
+    return {"ok": True}

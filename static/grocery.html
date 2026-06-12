@@ -743,6 +743,7 @@
   </div>
 </div>
 
+<script src="/static/native.js"></script>
 <script src="/static/common.js"></script>
 <script>
   const dropZone        = document.getElementById("drop-zone");
@@ -783,7 +784,18 @@
   let extractedResults = []; // { result, filename, saved } for save tracking
 
   // ── file selection ──
-  dropZone.addEventListener("click", () => fileInput.click());
+  dropZone.addEventListener("click", async () => {
+    if (isNativeApp()) {
+      try {
+        const nativeFile = await captureOrPickImage();
+        if (nativeFile) addFiles([nativeFile]);
+      } catch {
+        // 사용자가 취소한 경우 등 - 무시
+      }
+      return;
+    }
+    fileInput.click();
+  });
   fileInput.addEventListener("change", () => {
     addFiles(Array.from(fileInput.files));
     fileInput.value = "";
