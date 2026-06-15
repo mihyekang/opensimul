@@ -4,11 +4,8 @@ on:
   push:
     branches:
       - main
+      - claude/blissful-carson-akyH2
   workflow_dispatch:
-
-permissions:
-  id-token: write
-  contents: read
 
 jobs:
   test-and-deploy:
@@ -34,17 +31,9 @@ jobs:
           cp -r static deploy/
           cd deploy && zip -r ../deploy.zip .
 
-      - name: Azure login (OIDC)
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
       - name: Deploy to Azure Web App
-        run: |
-          az webapp deploy \
-            --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
-            --name openai-mini-poc-kmh-02 \
-            --src-path deploy.zip \
-            --type zip
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: openai-mini-poc-kmh-02
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          package: deploy.zip
