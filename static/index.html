@@ -738,6 +738,8 @@
       transition: all 0.12s;
     }
     .weekly-export-btn:hover { background: #e5e7eb; border-color: #9ca3af; }
+    .weekly-ai-box { padding:13px 16px; background:#fff; border-radius:10px; border-left:3px solid #0078d4; font-size:0.82rem; color:#333; line-height:1.65; flex-shrink:0; }
+    .weekly-ai-box.weekly-ai-loading { color:#aaa; font-style:italic; }
     .weekly-content {
       flex: 1;
       overflow-y: auto;
@@ -2371,6 +2373,13 @@
     const titleEl = document.querySelector(".weekly-title");
     titleEl.textContent = "📅 주간 지출 (불러오는 중…)";
 
+    // AI 분석 요청 — 히스토리 fetch와 병렬 실행
+    const aiPromise = fetch("/grocery/analyze-weekly", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({start_date: fromDate, end_date: toDate}),
+    }).then(r => r.json()).catch(() => ({summary: ""}));
+
     try {
       const url = `/grocery/history?start_date=${fromDate}&end_date=${toDate}`;
       const rows = await fetch(url).then(r => r.json());
@@ -2381,6 +2390,12 @@
         titleEl.textContent = "📅 주간 지출";
         return;
       }
+
+      // AI 분석 박스 — 최상단에 로딩 플레이스홀더
+      const aiBox = document.createElement("div");
+      aiBox.className = "weekly-ai-box weekly-ai-loading";
+      aiBox.textContent = "AI 소비 패턴 분석 중…";
+      content.appendChild(aiBox);
 
       function weekMonday(dateStr) {
         const d = new Date(dateStr + "T00:00:00");
@@ -2507,6 +2522,16 @@
         });
 
         content.appendChild(card);
+      });
+
+      // AI 분석 결과 업데이트 (비동기 완료 시)
+      aiPromise.then(({summary}) => {
+        aiBox.classList.remove("weekly-ai-loading");
+        if (summary) {
+          aiBox.innerHTML = `<strong>소비 패턴 분석</strong><br>${summary.replace(/\\n|\n/g, "<br>")}`;
+        } else {
+          aiBox.remove();
+        }
       });
     } catch (err) {
       content.innerHTML = `<p class="week-empty">오류: ${err.message}</p>`;

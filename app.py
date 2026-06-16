@@ -703,6 +703,74 @@ async def analyze_purchases(req: PurchaseAnalysisRequest, user_id: str = Depends
     }
 
 
+@app.post("/grocery/analyze-weekly")
+async def analyze_weekly(req: PurchaseAnalysisRequest, user_id: str = Depends(get_current_user)):
+    """주간 소비 패턴 비교 분석 (AI) — 최근 2주 비교."""
+    _validate_date(req.start_date, "start_date")
+    _validate_date(req.end_date, "end_date")
+    if not state.db_enabled:
+        return {"summary": ""}
+
+    loop = asyncio.get_event_loop()
+    items = await loop.run_in_executor(
+        None, lambda: db.get_items_by_date_range(user_id, req.start_date, req.end_date)
+    )
+    if not items:
+        return {"summary": ""}
+
+    from datetime import date as _date, timedelta as _td
+
+    def week_monday(date_str: str) -> "_date":
+        d = _date.fromisoformat(date_str)
+        return d - _td(days=d.weekday())
+
+    week_map: dict = {}
+    for item in items:
+        if not item.get("purchase_date"):
+            continue
+        monday = week_monday(item["purchase_date"])
+        week_map.setdefault(monday, []).append(item)
+
+    if not week_map:
+        return {"summary": ""}
+
+    sorted_weeks = sorted(week_map.keys(), reverse=True)[:2]
+    weeks_info = []
+    for monday in sorted_weeks:
+        sunday = monday + _td(days=6)
+        week_items = week_map[monday]
+        total = sum(i["amount"] for i in week_items)
+        weeks_info.append({
+            "기간": f"{monday.isoformat()} ~ {sunday.isoformat()}",
+            "총액_원": total,
+            "품목": [{"품목": i["raw_name"], "금액": i["amount"], "업체": i["merchant"]} for i in week_items],
+        })
+
+    prompt = (
+        "다음 주간 장보기 소비를 비교 분석해줘.\n\n"
+        f"{json.dumps(weeks_info, ensure_ascii=False, indent=2)}\n\n"
+        "3줄 이내로 핵심만 분석해줘 (금액 포함):\n"
+        "- 1줄: 주간 지출 비교 (증감액 또는 증감률)\n"
+        "- 2줄: 주요 소비 카테고리와 두드러진 지출\n"
+        "- 3줄: 불필요하거나 절감 가능한 지출 포인트\n\n"
+        "주간 데이터가 1주뿐이면 그 주의 소비 성향만 분석해줘.\n\n"
+        "응답은 반드시 아래 JSON 형식으로만:\n"
+        '{"summary": "분석 내용 (줄바꿈은 실제 개행문자 사용)"}'
+    )
+
+    c = _client("__weekly_analysis__")
+    reply, _ = await loop.run_in_executor(None, lambda: c.chat(prompt))
+
+    import re as _re
+    m = _re.search(r"\{[\s\S]*\}", reply)
+    try:
+        parsed = json.loads(m.group(0)) if m else {}
+    except Exception:
+        parsed = {}
+
+    return {"summary": parsed.get("summary", reply.strip()[:300])}
+
+
 @app.get("/grocery/receipt/{receipt_id}")
 async def grocery_get_receipt(receipt_id: int, user_id: str = Depends(get_current_user)):
     """영수증 상세 조회 (소유자만 가능)."""
