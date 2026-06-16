@@ -248,6 +248,12 @@
       flex-shrink: 0;
     }
     .overlay-hamburger-btn:hover { background: #f0f0f0; }
+    .overlay-back-btn {
+      background: none; border: none; font-size: 1.5rem; font-weight: 300;
+      cursor: pointer; padding: 2px 8px 2px 2px; border-radius: 8px;
+      color: #444; line-height: 1; flex-shrink: 0;
+    }
+    .overlay-back-btn:hover { background: #f0f0f0; }
 
     /* ── receipt history overlay ── */
     #history-overlay {
@@ -1012,13 +1018,13 @@
 <!-- receipt history overlay -->
 <div id="history-overlay">
   <div class="history-header">
+    <button id="history-back-btn" class="overlay-back-btn" title="뒤로">‹</button>
     <button class="overlay-hamburger-btn" id="history-hamburger-btn" title="메뉴">☰</button>
     <span class="history-title">영수증 이력</span>
     <a href="/grocery" class="history-add-btn">＋ 추가</a>
     <button id="history-del-toggle" class="history-del-toggle">🗑 삭제</button>
     <button id="history-sel-all" class="history-sel-all">전체 선택</button>
     <button id="history-del-confirm" class="history-del-confirm">선택 삭제 (0)</button>
-    <button id="history-close-btn" class="history-close-btn" title="닫기">✕</button>
   </div>
   <div class="weekly-date-bar" id="history-date-bar">
     <span class="weekly-date-label">기간</span>
@@ -1034,11 +1040,11 @@
 <!-- weekly overlay -->
 <div id="weekly-overlay">
   <div class="weekly-header">
+    <button id="weekly-back-btn" class="overlay-back-btn" title="뒤로">‹</button>
     <button class="overlay-hamburger-btn" id="weekly-hamburger-btn" title="메뉴">☰</button>
     <span class="weekly-title">주간 지출</span>
     <button id="weekly-export-html-btn" class="weekly-export-btn" title="HTML 파일로 저장">HTML</button>
     <button id="weekly-export-pdf-btn" class="weekly-export-btn" title="PDF로 저장 (인쇄)">PDF</button>
-    <button id="weekly-close-btn" class="history-close-btn" title="닫기">✕</button>
   </div>
   <div class="weekly-date-bar">
     <span class="weekly-date-label">기간</span>
@@ -1053,9 +1059,9 @@
 <!-- purchase overlay -->
 <div id="purchase-overlay">
   <div class="weekly-header">
+    <button id="purchase-back-btn" class="overlay-back-btn" title="뒤로">‹</button>
     <button class="overlay-hamburger-btn" id="purchase-hamburger-btn" title="메뉴">☰</button>
     <span id="purchase-title" class="weekly-title">🛒 뭘 샀을까?</span>
-    <button id="purchase-close-btn" class="history-close-btn" title="닫기">✕</button>
   </div>
   <div class="weekly-date-bar">
     <span class="weekly-date-label">기간</span>
@@ -1201,6 +1207,26 @@
     ["history-overlay", "weekly-overlay", "purchase-overlay"].forEach(id => {
       document.getElementById(id)?.classList.remove("open");
     });
+  }
+
+  const _navStack = [];
+
+  function _getCurrentPanel() {
+    return ["history-overlay", "weekly-overlay", "purchase-overlay"].find(
+      id => document.getElementById(id)?.classList.contains("open")
+    ) || null;
+  }
+
+  function _pushAndClose(targetId) {
+    const current = _getCurrentPanel();
+    if (current !== targetId) _navStack.push(current);
+    _closeFullScreenOverlays();
+  }
+
+  function _goBack() {
+    _closeFullScreenOverlays();
+    const prev = _navStack.length > 0 ? _navStack.pop() : null;
+    if (prev) document.getElementById(prev).classList.add("open");
   }
 
   function toggleHamburger(e) {
@@ -1756,9 +1782,9 @@
   let _historySelected      = new Set();
   let _historySelectedData  = new Map(); // id → {merchant, purchase_date, total}
 
-  document.getElementById("history-close-btn").addEventListener("click", () => {
-    document.getElementById("history-overlay").classList.remove("open");
+  document.getElementById("history-back-btn").addEventListener("click", () => {
     document.querySelector(".history-title").textContent = "📋 영수증 이력";
+    _goBack();
   });
 
   function _updateDeleteHeader() {
@@ -1994,7 +2020,7 @@
   });
 
   async function openHistoryPanel(filterMerchant = null, startDate = null, endDate = null) {
-    _closeFullScreenOverlays();
+    _pushAndClose("history-overlay");
     _historyDeleteMode = false;
     _historySelected.clear();
     _historySelectedData.clear();
@@ -2102,9 +2128,7 @@
     document.getElementById("hamburger-menu").classList.remove("open");
     openWeeklyPanel();
   });
-  document.getElementById("weekly-close-btn").addEventListener("click", () => {
-    document.getElementById("weekly-overlay").classList.remove("open");
-  });
+  document.getElementById("weekly-back-btn").addEventListener("click", _goBack);
   document.getElementById("weekly-apply-btn").addEventListener("click", () => {
     openWeeklyPanel();
   });
@@ -2124,7 +2148,7 @@
   }
 
   async function openPurchasePanel() {
-    _closeFullScreenOverlays();
+    _pushAndClose("purchase-overlay");
     document.getElementById("purchase-overlay").classList.add("open");
     const content = document.getElementById("purchase-content");
     const startInput = document.getElementById("purchase-start-date");
@@ -2320,9 +2344,7 @@
     document.getElementById("hamburger-menu").classList.remove("open");
     openPurchasePanel();
   });
-  document.getElementById("purchase-close-btn").addEventListener("click", () => {
-    document.getElementById("purchase-overlay").classList.remove("open");
-  });
+  document.getElementById("purchase-back-btn").addEventListener("click", _goBack);
   document.getElementById("purchase-hamburger-btn").addEventListener("click", toggleHamburger);
   document.getElementById("purchase-apply-btn").addEventListener("click", openPurchasePanel);
 
@@ -2362,7 +2384,7 @@
   }
 
   async function openWeeklyPanel() {
-    _closeFullScreenOverlays();
+    _pushAndClose("weekly-overlay");
     document.getElementById("weekly-overlay").classList.add("open");
     const content = document.getElementById("weekly-content");
     const startInput = document.getElementById("weekly-start-date");

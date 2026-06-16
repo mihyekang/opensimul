@@ -48,8 +48,8 @@ class TestPurchaseElements:
         btn = hamburger.find(id="purchase-btn")
         assert btn is not None, "#purchase-btn 이 #hamburger-menu 안에 없습니다"
 
-    def test_purchase_close_btn_exists(self, soup):
-        assert soup.find(id="purchase-close-btn") is not None, "#purchase-close-btn 이 없습니다"
+    def test_purchase_back_btn_exists(self, soup):
+        assert soup.find(id="purchase-back-btn") is not None, "#purchase-back-btn 이 없습니다"
 
     def test_purchase_apply_btn_exists(self, soup):
         assert soup.find(id="purchase-apply-btn") is not None, "#purchase-apply-btn 이 없습니다"
