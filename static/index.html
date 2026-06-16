@@ -1197,6 +1197,12 @@
     usagePanel.classList.remove("open");
   }
 
+  function _closeFullScreenOverlays() {
+    ["history-overlay", "weekly-overlay", "purchase-overlay"].forEach(id => {
+      document.getElementById(id)?.classList.remove("open");
+    });
+  }
+
   function toggleHamburger(e) {
     e.stopPropagation();
     const wasOpen = hamburgerMenu.classList.contains("open");
@@ -1988,6 +1994,7 @@
   });
 
   async function openHistoryPanel(filterMerchant = null, startDate = null, endDate = null) {
+    _closeFullScreenOverlays();
     _historyDeleteMode = false;
     _historySelected.clear();
     _historySelectedData.clear();
@@ -2117,6 +2124,7 @@
   }
 
   async function openPurchasePanel() {
+    _closeFullScreenOverlays();
     document.getElementById("purchase-overlay").classList.add("open");
     const content = document.getElementById("purchase-content");
     const startInput = document.getElementById("purchase-start-date");
@@ -2354,6 +2362,7 @@
   }
 
   async function openWeeklyPanel() {
+    _closeFullScreenOverlays();
     document.getElementById("weekly-overlay").classList.add("open");
     const content = document.getElementById("weekly-content");
     const startInput = document.getElementById("weekly-start-date");
