@@ -749,13 +749,26 @@ async def analyze_weekly(req: PurchaseAnalysisRequest, user_id: str = Depends(ge
     prompt = (
         "다음 주간 장보기 소비를 비교 분석해줘.\n\n"
         f"{json.dumps(weeks_info, ensure_ascii=False, indent=2)}\n\n"
-        "3줄 이내로 핵심만 분석해줘 (금액 포함):\n"
-        "- 1줄: 주간 지출 비교 (증감액 또는 증감률)\n"
-        "- 2줄: 주요 소비 카테고리와 두드러진 지출\n"
-        "- 3줄: 불필요하거나 절감 가능한 지출 포인트\n\n"
-        "주간 데이터가 1주뿐이면 그 주의 소비 성향만 분석해줘.\n\n"
-        "응답은 반드시 아래 JSON 형식으로만:\n"
-        '{"summary": "분석 내용 (줄바꿈은 실제 개행문자 사용)"}'
+        "응답은 반드시 아래 JSON 형식으로만 출력해 (다른 텍스트 없이):\n"
+        "{\n"
+        '  "summary": "3줄 이내 핵심 분석 (금액 포함, 줄바꿈은 실제 개행문자 사용)",\n'
+        '  "weeks": [\n'
+        '    {\n'
+        '      "label": "이번 주",\n'
+        '      "period": "YYYY-MM-DD ~ YYYY-MM-DD",\n'
+        '      "total": 50000,\n'
+        '      "categories": {"신선식품": 20000, "가공식품": 15000, "음료/주류": 0, "생활용품": 5000, "반려동물용품": 0, "기타": 0}\n'
+        '    }\n'
+        '  ]\n'
+        "}\n\n"
+        "카테고리 기준:\n"
+        "- 신선식품: 채소, 과일, 육류, 수산물, 유제품, 계란\n"
+        "- 가공식품: 라면, 통조림, 과자, 빵, 냉동식품, 조미료\n"
+        "- 음료/주류: 음료, 물, 맥주, 소주, 커피, 차\n"
+        "- 생활용품: 세제, 휴지, 청소용품, 위생용품\n"
+        "- 반려동물용품: 사료, 간식, 장난감, 배변패드, 모래, 펫 관련 용품\n"
+        "- 기타: 위 카테고리에 해당 없는 항목\n\n"
+        "weeks 배열은 최신 주 먼저. label은 '이번 주'/'지난 주'/'그 전 주' 등 사람이 읽기 편하게."
     )
 
     c = _client("__weekly_analysis__")
@@ -768,7 +781,10 @@ async def analyze_weekly(req: PurchaseAnalysisRequest, user_id: str = Depends(ge
     except Exception:
         parsed = {}
 
-    return {"summary": parsed.get("summary", reply.strip()[:300])}
+    return {
+        "summary": parsed.get("summary", reply.strip()[:300]),
+        "weeks": parsed.get("weeks", []),
+    }
 
 
 @app.get("/grocery/receipt/{receipt_id}")

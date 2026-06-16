@@ -746,6 +746,17 @@
     .weekly-export-btn:hover { background: #e5e7eb; border-color: #9ca3af; }
     .weekly-ai-box { padding:13px 16px; background:#fff; border-radius:10px; border-left:3px solid #0078d4; font-size:0.82rem; color:#333; line-height:1.65; flex-shrink:0; }
     .weekly-ai-box.weekly-ai-loading { color:#aaa; font-style:italic; }
+    .wai-summary { margin:6px 0 12px; font-size:0.82rem; line-height:1.65; color:#333; }
+    .wai-legend-bar { display:flex; gap:14px; margin-bottom:10px; font-size:0.74rem; color:#555; flex-wrap:wrap; }
+    .wai-legend-dot { width:10px; height:10px; border-radius:2px; display:inline-block; margin-right:4px; vertical-align:middle; }
+    .wai-cat-row { display:grid; grid-template-columns:72px 1fr; gap:4px 8px; align-items:center; margin-bottom:8px; }
+    .wai-cat-label { font-size:0.72rem; color:#555; text-align:right; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .wai-bars { display:flex; flex-direction:column; gap:3px; }
+    .wai-bar-wrap { display:flex; align-items:center; gap:6px; }
+    .wai-bar { height:11px; border-radius:3px; min-width:3px; flex-shrink:0; }
+    .wai-bar.this-week { background:#0078d4; }
+    .wai-bar.last-week { background:#94a3b8; }
+    .wai-bar-amt { font-size:0.68rem; color:#777; white-space:nowrap; }
     .weekly-content {
       flex: 1;
       overflow-y: auto;
@@ -2556,12 +2567,70 @@
       });
 
       // AI 분석 결과 업데이트 (비동기 완료 시)
-      aiPromise.then(({summary}) => {
+      aiPromise.then(({summary, weeks}) => {
         aiBox.classList.remove("weekly-ai-loading");
+        if (!summary && (!weeks || weeks.length === 0)) { aiBox.remove(); return; }
+
+        aiBox.innerHTML = "";
+        const titleEl = document.createElement("strong");
+        titleEl.textContent = "소비 패턴 분석";
+        aiBox.appendChild(titleEl);
+
         if (summary) {
-          aiBox.innerHTML = `<strong>소비 패턴 분석</strong><br>${summary.replace(/\\n|\n/g, "<br>")}`;
-        } else {
-          aiBox.remove();
+          const summaryEl = document.createElement("div");
+          summaryEl.className = "wai-summary";
+          summaryEl.innerHTML = summary.replace(/\\n|\n/g, "<br>");
+          aiBox.appendChild(summaryEl);
+        }
+
+        if (weeks && weeks.length >= 1) {
+          const CATS = ["신선식품", "가공식품", "음료/주류", "생활용품", "반려동물용품", "기타"];
+          const thisWeek = weeks[0];
+          const lastWeek = weeks[1] || null;
+
+          const allAmts = CATS.flatMap(c => [
+            thisWeek.categories?.[c] || 0,
+            lastWeek ? (lastWeek.categories?.[c] || 0) : 0,
+          ]);
+          const maxAmt = Math.max(...allAmts, 1);
+
+          const legend = document.createElement("div");
+          legend.className = "wai-legend-bar";
+          legend.innerHTML = `<span><span class="wai-legend-dot" style="background:#0078d4"></span>${thisWeek.label || "이번 주"} ${(thisWeek.total || 0).toLocaleString("ko-KR")}원</span>${lastWeek ? `<span><span class="wai-legend-dot" style="background:#94a3b8"></span>${lastWeek.label || "지난 주"} ${(lastWeek.total || 0).toLocaleString("ko-KR")}원</span>` : ""}`;
+          aiBox.appendChild(legend);
+
+          const mkBar = (amt, cls) => {
+            const wrap = document.createElement("div");
+            wrap.className = "wai-bar-wrap";
+            const bar = document.createElement("div");
+            bar.className = `wai-bar ${cls}`;
+            bar.style.width = `${((amt / maxAmt) * 100).toFixed(1)}%`;
+            const lbl = document.createElement("span");
+            lbl.className = "wai-bar-amt";
+            lbl.textContent = amt > 0 ? amt.toLocaleString("ko-KR") + "원" : "";
+            wrap.appendChild(bar);
+            wrap.appendChild(lbl);
+            return wrap;
+          };
+
+          CATS.forEach(cat => {
+            const thisAmt = thisWeek.categories?.[cat] || 0;
+            const lastAmt = lastWeek?.categories?.[cat] || 0;
+            if (thisAmt === 0 && lastAmt === 0) return;
+
+            const row = document.createElement("div");
+            row.className = "wai-cat-row";
+            const label = document.createElement("div");
+            label.className = "wai-cat-label";
+            label.textContent = cat;
+            const bars = document.createElement("div");
+            bars.className = "wai-bars";
+            bars.appendChild(mkBar(thisAmt, "this-week"));
+            if (lastWeek) bars.appendChild(mkBar(lastAmt, "last-week"));
+            row.appendChild(label);
+            row.appendChild(bars);
+            aiBox.appendChild(row);
+          });
         }
       });
     } catch (err) {
