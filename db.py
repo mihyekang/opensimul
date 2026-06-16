@@ -14,8 +14,18 @@ from psycopg2.extras import RealDictCursor
 
 logger = logging.getLogger(__name__)
 
+_connection_factory = None
+
+
+def set_connection_factory(factory):
+    """테스트에서 mock 연결 주입용. None 전달 시 psycopg2 기본값으로 복원."""
+    global _connection_factory
+    _connection_factory = factory
+
 
 def _get_conn():
+    if _connection_factory is not None:
+        return _connection_factory()
     return psycopg2.connect(os.environ["POSTGRESQL_CONNECTION_STRING"])
 
 

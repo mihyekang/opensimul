@@ -839,21 +839,35 @@ _COOKIE_OPTS = dict(httponly=True, samesite="lax", max_age=30 * 24 * 3600, path=
 
 _LOGIN_MAX_ATTEMPTS = 5
 _LOGIN_WINDOW_SECONDS = 15 * 60
-_login_attempts: dict[str, list[float]] = {}
 
 
-def _check_rate_limit(user_code: str) -> bool:
-    now = time.time()
-    attempts = [t for t in _login_attempts.get(user_code, []) if now - t < _LOGIN_WINDOW_SECONDS]
-    if attempts:
-        _login_attempts[user_code] = attempts
-    else:
-        _login_attempts.pop(user_code, None)
-    return len(attempts) < _LOGIN_MAX_ATTEMPTS
+class RateLimiter:
+    """로그인 시도 횟수를 슬라이딩 윈도우로 제한."""
+    def __init__(self, max_attempts: int = 5, window_seconds: float = 15 * 60):
+        self._attempts: dict[str, list[float]] = {}
+        self._max = max_attempts
+        self._window = window_seconds
+
+    def is_allowed(self, user_code: str) -> bool:
+        now = time.time()
+        recent = [t for t in self._attempts.get(user_code, []) if now - t < self._window]
+        if recent:
+            self._attempts[user_code] = recent
+        else:
+            self._attempts.pop(user_code, None)
+        return len(recent) < self._max
+
+    def record_failure(self, user_code: str) -> None:
+        self._attempts.setdefault(user_code, []).append(time.time())
+
+    def clear(self, user_code: str) -> None:
+        self._attempts.pop(user_code, None)
+
+    def reset_all(self) -> None:
+        self._attempts.clear()
 
 
-def _record_failed_attempt(user_code: str) -> None:
-    _login_attempts.setdefault(user_code, []).append(time.time())
+_rate_limiter = RateLimiter(max_attempts=_LOGIN_MAX_ATTEMPTS, window_seconds=_LOGIN_WINDOW_SECONDS)
 
 
 @app.post("/auth/login")
@@ -861,14 +875,14 @@ async def auth_login(req: AuthRequest, response: Response):
     if not state.db_enabled:
         response.set_cookie("sid", req.user_code, **_COOKIE_OPTS)
         return {"ok": True, "user_code": req.user_code}
-    if not _check_rate_limit(req.user_code):
+    if not _rate_limiter.is_allowed(req.user_code):
         raise HTTPException(status_code=429, detail="too_many_attempts")
     loop = asyncio.get_event_loop()
     ok = await loop.run_in_executor(None, lambda: db.login_user(req.user_code, req.password))
     if not ok:
-        _record_failed_attempt(req.user_code)
+        _rate_limiter.record_failure(req.user_code)
         return {"ok": False, "user_code": None, "reason": "invalid"}
-    _login_attempts.pop(req.user_code, None)
+    _rate_limiter.clear(req.user_code)
     token = await loop.run_in_executor(None, lambda: db.create_user_session(req.user_code))
     response.set_cookie("sid", token, **_COOKIE_OPTS)
     return {"ok": True, "user_code": req.user_code}
@@ -911,3 +925,11 @@ async def push_register(req: PushTokenRequest, user_id: str = Depends(get_curren
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(None, lambda: db.register_push_token(user_id, req.token, req.platform))
     return {"ok": True}
+
+
+def _reset_for_testing(db_enabled: bool = False) -> None:
+    """pytest conftest에서만 호출. 전역 state를 테스트 초기 상태로 재설정."""
+    state.db_enabled = db_enabled
+    state.usd_to_krw = 1300.0
+    state.rate_date = "test"
+    _rate_limiter.reset_all()
