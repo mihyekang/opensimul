@@ -12,7 +12,7 @@ import logging
 import os
 import time
 from contextlib import asynccontextmanager
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 
 import fitz  # PyMuPDF
 from PIL import Image, ImageOps
@@ -68,12 +68,35 @@ class AppState:
 state = AppState()
 
 
+_KST = timezone(timedelta(hours=9))
+_TRASH_CLEANUP_DAYS = 30
+
+
+async def _daily_trash_cleanup() -> None:
+    """매일 오전 8시(KST)에 30일 이상 지난 휴지통 항목을 자동 삭제."""
+    while True:
+        now = datetime.now(_KST)
+        target = now.replace(hour=8, minute=0, second=0, microsecond=0)
+        if now >= target:
+            target += timedelta(days=1)
+        await asyncio.sleep((target - now).total_seconds())
+        try:
+            loop = asyncio.get_event_loop()
+            deleted = await loop.run_in_executor(
+                None, lambda: db.cleanup_old_trash(_TRASH_CLEANUP_DAYS)
+            )
+            logger.info("휴지통 자동 정리: %d개 삭제", deleted)
+        except Exception:
+            logger.exception("휴지통 자동 정리 중 오류 발생")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     config = ClientConfig()
     state.usd_to_krw, state.rate_date = fetch_usd_to_krw(verify_ssl=config.verify_ssl)
     state.db_enabled = False
 
+    cleanup_task = None
     if os.environ.get("POSTGRESQL_CONNECTION_STRING"):
         try:
             db.init_db()
@@ -85,11 +108,19 @@ async def lifespan(app: FastAPI):
             logger.info("만료 채팅 세션 %d개 정리 완료", deleted)
             expired = await loop.run_in_executor(None, db.cleanup_expired_user_sessions)
             logger.info("만료 로그인 세션 %d개 정리 완료", expired)
+            cleanup_task = asyncio.create_task(_daily_trash_cleanup())
         except Exception as e:
             logger.warning("DB 초기화 실패 — DB 저장 비활성화: %s", e)
 
     state.session_manager = SessionManager(config, db_enabled=state.db_enabled)
     yield
+
+    if cleanup_task is not None:
+        cleanup_task.cancel()
+        try:
+            await cleanup_task
+        except asyncio.CancelledError:
+            pass
 
 
 app = FastAPI(title="Azure OpenAI Chat", lifespan=lifespan)

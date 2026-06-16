@@ -702,6 +702,19 @@ def cleanup_expired_user_sessions() -> int:
     return count
 
 
+def cleanup_old_trash(days: int = 30) -> int:
+    """30일 이상 지난 휴지통 항목 삭제. 삭제된 행 수 반환."""
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM trash_bin WHERE deleted_at < NOW() - INTERVAL '%s days'",
+                (days,),
+            )
+            count = cur.rowcount
+        conn.commit()
+    return count
+
+
 # ── push notifications ───────────────────────────────────────────────────────
 
 def register_push_token(user_code: str, token: str, platform: str) -> None:
