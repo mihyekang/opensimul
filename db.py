@@ -353,17 +353,41 @@ def get_grocery_receipt_detail(receipt_id: int, user_id: str) -> dict | None:
         return result
 
 
+def _deduct_pantry(cur, user_id: str, items: list[dict]) -> None:
+    """트랜잭션 내에서 pantry 재고를 차감. total_qty <= 0이면 항목 삭제."""
+    for item in items:
+        if item.get("is_cancelled") or not item.get("raw_name"):
+            continue
+        qty = item.get("qty") or 1
+        cur.execute("""
+            UPDATE pantry_items SET
+                total_qty   = GREATEST(total_qty - %s, 0),
+                current_qty = GREATEST(current_qty - %s, 0),
+                updated_at  = NOW()
+            WHERE user_id = %s AND raw_name = %s
+        """, (qty, qty, user_id, item["raw_name"]))
+        cur.execute("""
+            DELETE FROM pantry_items
+            WHERE user_id = %s AND raw_name = %s AND total_qty = 0
+        """, (user_id, item["raw_name"]))
+
+
 def delete_grocery_receipt(receipt_id: int, user_id: str) -> bool:
     """영수증 삭제. user_id 소유자만 삭제 가능. True if deleted."""
     with _get_conn() as conn:
-        with conn.cursor() as cur:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT id FROM grocery_receipts WHERE id = %s AND user_id = %s", (receipt_id, user_id))
+            if not cur.fetchone():
+                return False
             cur.execute(
-                "DELETE FROM grocery_receipts WHERE id = %s AND user_id = %s",
-                (receipt_id, user_id),
+                "SELECT raw_name, qty, is_cancelled FROM grocery_items WHERE receipt_id = %s",
+                (receipt_id,),
             )
-            deleted = cur.rowcount > 0
+            items = [dict(r) for r in cur.fetchall()]
+            _deduct_pantry(cur, user_id, items)
+            cur.execute("DELETE FROM grocery_receipts WHERE id = %s", (receipt_id,))
         conn.commit()
-    return deleted
+    return True
 
 
 def delete_grocery_item(item_id: int, user_id: str) -> bool:
@@ -813,6 +837,7 @@ def move_to_trash(user_id: str, start_date: str, end_date: str, merchant: str = 
                     INSERT INTO trash_bin (user_id, origin_table, origin_id, merchant, purchase_date, data)
                     VALUES (%s, 'grocery_receipts', %s, %s, %s, %s)
                 """, (user_id, r["id"], r["merchant"], r["purchase_date"], json.dumps(data, ensure_ascii=False, default=str)))
+                _deduct_pantry(cur, user_id, data.get("items", []))
             ids = [r["id"] for r in receipts]
             cur.execute(f"DELETE FROM grocery_receipts WHERE id = ANY(%s)", (ids,))
         conn.commit()
@@ -871,7 +896,12 @@ def restore_trash_item(trash_id: int, user_id: str) -> bool:
                     VALUES (%s, %s, %s, %s, %s, %s)
                 """, (new_id, item["raw_name"], item.get("qty", 1), item.get("unit_price"), item.get("amount"), item.get("is_cancelled", False)))
             cur.execute("DELETE FROM trash_bin WHERE id = %s AND user_id = %s", (trash_id, user_id))
+            restored_items = data.get("items", [])
         conn.commit()
+    for item in restored_items:
+        if item.get("is_cancelled") or not item.get("raw_name"):
+            continue
+        upsert_pantry_from_purchase(user_id, item["raw_name"], item.get("qty") or 1, "")
     return True
 
 
