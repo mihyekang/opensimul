@@ -93,6 +93,64 @@
     .thumb-item.done { border-color: #22c55e; }
     .thumb-item.error { border-color: #ef4444; }
 
+    /* 이어붙이기 선택 상태 */
+    .thumb-item.stitch-selected { border-color: #7c3aed; border-width: 2px; }
+    .thumb-item.stitch-grouped  { border-color: #7c3aed; border-style: dashed; }
+    .thumb-check {
+      position: absolute;
+      top: 3px; left: 3px;
+      width: 18px; height: 18px;
+      background: rgba(255,255,255,.85);
+      border: 1.5px solid #bbb;
+      border-radius: 4px;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.7rem;
+      z-index: 1;
+      line-height: 1;
+    }
+    .thumb-item.stitch-selected .thumb-check,
+    .thumb-item.stitch-grouped  .thumb-check { background: #7c3aed; border-color: #7c3aed; color: #fff; }
+    .stitch-label {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      background: rgba(124,58,237,.85);
+      color: #fff;
+      font-size: 0.6rem;
+      text-align: center;
+      padding: 2px 0;
+      pointer-events: none;
+    }
+    #stitch-bar {
+      display: none;
+      width: 100%;
+      max-width: 480px;
+      gap: 8px;
+      margin-bottom: 8px;
+      align-items: center;
+    }
+    #stitch-btn {
+      flex: 1;
+      padding: 9px 14px;
+      background: #7c3aed;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    #stitch-btn:hover { background: #6d28d9; }
+    #stitch-cancel-btn {
+      padding: 9px 12px;
+      background: #f3f4f6;
+      color: #555;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+
     /* add-more button inside strip */
     #add-more-btn {
       width: 88px;
@@ -709,6 +767,11 @@
 
   <div id="thumb-strip"></div>
 
+  <div id="stitch-bar">
+    <button id="stitch-btn">🔗 이어붙이기</button>
+    <button id="stitch-cancel-btn">취소</button>
+  </div>
+
   <button id="extract-btn" disabled>가져오기</button>
 </div>
 
@@ -760,6 +823,113 @@
   const textSection     = document.getElementById("text-section");
   const textInput       = document.getElementById("receipt-text-input");
   const textExtractBtn  = document.getElementById("text-extract-btn");
+  const stitchBar       = document.getElementById("stitch-bar");
+  const stitchBtn       = document.getElementById("stitch-btn");
+  const stitchCancelBtn = document.getElementById("stitch-cancel-btn");
+
+  // stitchGroups: Map<fileIndex, groupId(number)>
+  let stitchGroups = new Map();
+  let stitchSelected = new Set(); // 현재 이어붙이기 선택 중인 index
+  let nextGroupId = 1;
+
+  function updateStitchBar() {
+    if (stitchSelected.size >= 2) {
+      stitchBar.style.display = "flex";
+      stitchBtn.textContent = `🔗 ${stitchSelected.size}장 이어붙이기`;
+    } else {
+      stitchBar.style.display = stitchSelected.size === 1 ? "flex" : "none";
+      if (stitchSelected.size === 1) stitchBtn.textContent = "🔗 이어붙이기 (2장 이상 선택)";
+    }
+  }
+
+  stitchBtn.addEventListener("click", () => {
+    if (stitchSelected.size < 2) return;
+    const gid = nextGroupId++;
+    stitchSelected.forEach(idx => stitchGroups.set(idx, gid));
+    stitchSelected.clear();
+    renderThumbs();
+  });
+
+  stitchCancelBtn.addEventListener("click", () => {
+    stitchSelected.clear();
+    renderThumbs();
+  });
+
+  // 이미지 파일들을 세로로 이어붙여 File 반환 (canvas 기반)
+  async function stitchImages(files) {
+    const bitmaps = await Promise.all(files.map(f => createImageBitmap(f)));
+    const w = Math.max(...bitmaps.map(b => b.width));
+    const h = bitmaps.reduce((sum, b) => sum + b.height, 0);
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    let y = 0;
+    for (const bm of bitmaps) { ctx.drawImage(bm, 0, y); y += bm.height; }
+    bitmaps.forEach(b => b.close());
+    return new Promise(resolve =>
+      canvas.toBlob(b => resolve(new File([b], "stitched.jpg", { type: "image/jpeg" })), "image/jpeg", 0.92)
+    );
+  }
+
+  // 현재 selectedFiles + stitchGroups에서 처리 단위(batches) 계산
+  // 반환: [{ file: File, label: string }]  (그룹은 이미 스티칭된 File)
+  async function buildBatches() {
+    const grouped = new Map(); // groupId → [file, ...]
+    const result  = [];
+
+    for (let i = 0; i < selectedFiles.length; i++) {
+      const gid = stitchGroups.get(i);
+      if (gid !== undefined) {
+        if (!grouped.has(gid)) grouped.set(gid, []);
+        grouped.get(gid).push({ idx: i, file: selectedFiles[i] });
+      } else {
+        result.push({ idx: i, groupId: null });
+      }
+    }
+
+    // index 순서 유지한 순서대로 batches 생성
+    const orderMap = new Map();
+    for (let i = 0; i < selectedFiles.length; i++) {
+      const gid = stitchGroups.get(i);
+      if (gid !== undefined) {
+        if (!orderMap.has(gid)) orderMap.set(gid, i); // 그룹의 첫 번째 등장 위치
+      }
+    }
+
+    const all = [];
+    const seenGroups = new Set();
+    for (let i = 0; i < selectedFiles.length; i++) {
+      const gid = stitchGroups.get(i);
+      if (gid !== undefined) {
+        if (!seenGroups.has(gid)) {
+          seenGroups.add(gid);
+          all.push({ type: "group", gid, firstIdx: i });
+        }
+      } else {
+        all.push({ type: "single", idx: i });
+      }
+    }
+
+    const batches = [];
+    for (const item of all) {
+      if (item.type === "single") {
+        batches.push({ file: selectedFiles[item.idx], label: selectedFiles[item.idx].name, indices: [item.idx] });
+      } else {
+        const files = grouped.get(item.gid).map(x => x.file);
+        const isPdf = files.some(f => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"));
+        if (isPdf) {
+          // PDF는 스티칭 불가 - 개별 처리
+          grouped.get(item.gid).forEach(x => batches.push({ file: x.file, label: x.file.name, indices: [x.idx] }));
+        } else {
+          const stitched = await stitchImages(files);
+          const label = files.map(f => f.name).join(" + ");
+          batches.push({ file: stitched, label, indices: grouped.get(item.gid).map(x => x.idx) });
+        }
+      }
+    }
+    return batches;
+  }
 
   // ── mode tabs ──
   let inputMode = "img";
@@ -822,6 +992,9 @@
     if (!selectedFiles.length) {
       thumbStrip.style.display = "none";
       dropZone.style.display = "block";
+      stitchBar.style.display = "none";
+      stitchGroups.clear();
+      stitchSelected.clear();
       extractBtn.disabled = true;
       return;
     }
@@ -832,20 +1005,62 @@
 
     selectedFiles.forEach((file, idx) => {
       const wrap = document.createElement("div");
-      wrap.className = "thumb-item";
+      const gid = stitchGroups.get(idx);
+      const isSel = stitchSelected.has(idx);
+      wrap.className = "thumb-item" +
+        (isSel ? " stitch-selected" : "") +
+        (gid !== undefined && !isSel ? " stitch-grouped" : "");
       wrap.dataset.idx = idx;
 
       const img = document.createElement("img");
       img.src = URL.createObjectURL(file);
 
+      // 체크박스 (이어붙이기 선택용)
+      const chk = document.createElement("div");
+      chk.className = "thumb-check";
+      chk.textContent = (isSel || gid !== undefined) ? "✓" : "";
+      chk.title = "이어붙이기 선택";
+      chk.addEventListener("click", e => {
+        e.stopPropagation();
+        if (gid !== undefined) {
+          // 이미 그룹된 경우 → 그룹 해제
+          const groupIndices = [...stitchGroups.entries()].filter(([, g]) => g === gid).map(([i]) => i);
+          groupIndices.forEach(i => stitchGroups.delete(i));
+        } else if (stitchSelected.has(idx)) {
+          stitchSelected.delete(idx);
+        } else {
+          stitchSelected.add(idx);
+        }
+        renderThumbs();
+      });
+
       const rm = document.createElement("button");
       rm.className = "thumb-remove";
       rm.textContent = "✕";
-      rm.addEventListener("click", () => {
+      rm.addEventListener("click", e => {
+        e.stopPropagation();
+        stitchGroups.delete(idx);
+        stitchSelected.delete(idx);
+        // 인덱스 재정렬
+        const newGroups = new Map();
+        const newSel = new Set();
+        stitchGroups.forEach((g, i) => { if (i < idx) newGroups.set(i, g); else if (i > idx) newGroups.set(i - 1, g); });
+        stitchSelected.forEach(i => { if (i < idx) newSel.add(i); else if (i > idx) newSel.add(i - 1); });
+        stitchGroups = newGroups;
+        stitchSelected = newSel;
         selectedFiles.splice(idx, 1);
         renderThumbs();
       });
 
+      // 그룹 라벨
+      if (gid !== undefined) {
+        const lbl = document.createElement("div");
+        lbl.className = "stitch-label";
+        lbl.textContent = "이어붙이기";
+        wrap.appendChild(lbl);
+      }
+
+      wrap.appendChild(chk);
       wrap.appendChild(img);
       wrap.appendChild(rm);
       thumbStrip.appendChild(wrap);
@@ -858,6 +1073,7 @@
     addBtn.addEventListener("click", () => fileInput.click());
     thumbStrip.appendChild(addBtn);
 
+    updateStitchBar();
     extractBtn.disabled = false;
   }
 
@@ -872,14 +1088,16 @@
     resultWrap.innerHTML = "";
     extractedResults = [];
 
-    const total = selectedFiles.length;
+    progressLabel.textContent = "이미지 준비 중…";
+    const batches = await buildBatches();
+    const total = batches.length;
     const thumbItems = thumbStrip.querySelectorAll(".thumb-item");
 
     for (let i = 0; i < total; i++) {
-      const file = selectedFiles[i];
+      const { file, label, indices } = batches[i];
       progressBar.style.width = Math.round((i / total) * 100) + "%";
-      progressLabel.textContent = `${i + 1} / ${total} 처리 중… (${file.name})`;
-      if (thumbItems[i]) thumbItems[i].classList.add("processing");
+      progressLabel.textContent = `${i + 1} / ${total} 처리 중… (${label})`;
+      indices.forEach(idx => { if (thumbItems[idx]) thumbItems[idx].classList.add("processing"); });
 
       try {
         const form = new FormData();
@@ -888,22 +1106,26 @@
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
 
-        const entry = { result: data.result, filename: file.name, saved: false, dateConfirmed: false };
+        const entry = { result: data.result, filename: label, saved: false, dateConfirmed: false };
         extractedResults.push(entry);
-        const section = buildResultSection(file.name, data, entry);
+        const section = buildResultSection(label, data, entry);
         resultWrap.appendChild(section);
-        if (thumbItems[i]) { thumbItems[i].classList.remove("processing"); thumbItems[i].classList.add("done"); }
+        indices.forEach(idx => {
+          if (thumbItems[idx]) { thumbItems[idx].classList.remove("processing"); thumbItems[idx].classList.add("done"); }
+        });
       } catch (err) {
         const errDiv = document.createElement("div");
         errDiv.className = "result-section";
-        errDiv.innerHTML = `<p class="result-file-label">${escHtml(file.name)}</p><div class="issues"><p>🔴 오류: ${escHtml(err.message)}</p></div>`;
+        errDiv.innerHTML = `<p class="result-file-label">${escHtml(label)}</p><div class="issues"><p>🔴 오류: ${escHtml(err.message)}</p></div>`;
         resultWrap.appendChild(errDiv);
-        if (thumbItems[i]) { thumbItems[i].classList.remove("processing"); thumbItems[i].classList.add("error"); }
+        indices.forEach(idx => {
+          if (thumbItems[idx]) { thumbItems[idx].classList.remove("processing"); thumbItems[idx].classList.add("error"); }
+        });
       }
     }
 
     progressBar.style.width = "100%";
-    progressLabel.textContent = `완료 (${total}장)`;
+    progressLabel.textContent = `완료 (${total}건)`;
     progressWrap.style.display = "none";
     resultWrap.style.display = "block";
 
