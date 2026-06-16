@@ -308,6 +308,34 @@ def get_recent_groceries(days: int = 7, user_id: str = "") -> list[dict]:
             } for r in rows]
 
 
+def get_items_by_date_range(user_id: str, start_date: str, end_date: str) -> list[dict]:
+    """기간 내 모든 구매 아이템 반환 (취소/환불 제외)."""
+    with _get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT i.raw_name, i.amount, i.qty, i.unit_price,
+                       r.merchant, r.purchase_date, r.id AS receipt_id
+                FROM grocery_items i
+                JOIN grocery_receipts r ON r.id = i.receipt_id
+                WHERE r.user_id = %s
+                  AND NOT r.is_refund
+                  AND NOT i.is_cancelled
+                  AND i.amount > 0
+                  AND r.purchase_date BETWEEN %s AND %s
+                ORDER BY r.purchase_date DESC, r.id DESC, i.id ASC
+            """, (user_id, start_date, end_date))
+            rows = cur.fetchall()
+            return [{
+                "raw_name": r["raw_name"],
+                "amount": r["amount"],
+                "qty": r["qty"],
+                "unit_price": r["unit_price"],
+                "merchant": r["merchant"],
+                "purchase_date": r["purchase_date"].isoformat() if r["purchase_date"] else None,
+                "receipt_id": r["receipt_id"],
+            } for r in rows]
+
+
 def list_grocery_receipts(days: int = 30, user_id: str = "", start_date: str = "", end_date: str = "") -> list[dict]:
     """구매 이력 API용 요약 목록."""
     from_date = start_date if start_date else (date.today() - timedelta(days=days)).isoformat()

@@ -625,6 +625,82 @@ async def grocery_recent(days: int = Query(default=90, ge=1, le=365), user_id: s
     return rows
 
 
+class PurchaseAnalysisRequest(BaseModel):
+    start_date: str
+    end_date: str
+
+
+@app.post("/grocery/analyze-purchases")
+async def analyze_purchases(req: PurchaseAnalysisRequest, user_id: str = Depends(get_current_user)):
+    """기간 내 구매 아이템 AI 카테고리 분류 + 패턴 분석."""
+    _validate_date(req.start_date, "start_date")
+    _validate_date(req.end_date, "end_date")
+    if not state.db_enabled:
+        return {"summary": "", "categories": [], "items": []}
+
+    loop = asyncio.get_event_loop()
+    items = await loop.run_in_executor(
+        None, lambda: db.get_items_by_date_range(user_id, req.start_date, req.end_date)
+    )
+    if not items:
+        return {"summary": "", "categories": [], "items": []}
+
+    item_names = [i["raw_name"] for i in items]
+    prompt = (
+        "다음 구매 품목 목록을 분석해줘.\n\n"
+        f"품목: {json.dumps(item_names, ensure_ascii=False)}\n\n"
+        "응답을 반드시 아래 JSON 형식으로만 출력해 (다른 텍스트 없이):\n"
+        "{\n"
+        '  "summary": "구매 패턴 분석 3줄 이내 (개행은 \\\\n 사용)",\n'
+        '  "categories": {\n'
+        '    "신선식품": ["품목명1", ...],\n'
+        '    "가공식품": [...],\n'
+        '    "음료/주류": [...],\n'
+        '    "생활용품": [...],\n'
+        '    "기타": [...]\n'
+        "  }\n"
+        "}\n\n"
+        "카테고리 기준:\n"
+        "- 신선식품: 채소, 과일, 육류, 수산물, 유제품, 계란\n"
+        "- 가공식품: 라면, 통조림, 과자, 빵, 냉동식품, 조미료\n"
+        "- 음료/주류: 음료, 물, 맥주, 소주, 커피, 차\n"
+        "- 생활용품: 세제, 휴지, 청소용품, 위생용품\n"
+        "- 기타: 위 카테고리에 해당 없는 항목"
+    )
+
+    c = _client("__purchase_analysis__")
+    reply, _ = await loop.run_in_executor(None, lambda: c.chat(prompt))
+
+    import re
+    m = re.search(r"\{[\s\S]*\}", reply)
+    try:
+        parsed = json.loads(m.group(0)) if m else {}
+    except Exception:
+        parsed = {}
+
+    summary = parsed.get("summary", "")
+    cat_map = parsed.get("categories", {})
+    name_to_item = {}
+    for i in items:
+        name_to_item.setdefault(i["raw_name"], i)
+
+    cat_result = []
+    for cat_name, names in cat_map.items():
+        cat_items = [name_to_item[n] for n in names if n in name_to_item]
+        if cat_items:
+            cat_result.append({
+                "name": cat_name,
+                "amount": sum(ci["amount"] for ci in cat_items),
+                "item_names": [ci["raw_name"] for ci in cat_items],
+            })
+
+    return {
+        "summary": summary,
+        "categories": sorted(cat_result, key=lambda x: -x["amount"]),
+        "items": items,
+    }
+
+
 @app.get("/grocery/receipt/{receipt_id}")
 async def grocery_get_receipt(receipt_id: int, user_id: str = Depends(get_current_user)):
     """영수증 상세 조회 (소유자만 가능)."""
