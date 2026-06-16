@@ -744,19 +744,25 @@
       transition: all 0.12s;
     }
     .weekly-export-btn:hover { background: #e5e7eb; border-color: #9ca3af; }
-    .weekly-ai-box { padding:13px 16px; background:#fff; border-radius:10px; border-left:3px solid #0078d4; font-size:0.82rem; color:#333; line-height:1.65; flex-shrink:0; }
+    .weekly-ai-box { padding:13px 16px; background:#fff; border-radius:10px; border-left:3px solid #0078d4; font-size:0.82rem; color:#333; line-height:1.65; flex-shrink:0; overflow:hidden; }
     .weekly-ai-box.weekly-ai-loading { color:#aaa; font-style:italic; }
     .wai-summary { margin:6px 0 12px; font-size:0.82rem; line-height:1.65; color:#333; }
     .wai-legend-bar { display:flex; gap:14px; margin-bottom:10px; font-size:0.74rem; color:#555; flex-wrap:wrap; }
     .wai-legend-dot { width:10px; height:10px; border-radius:2px; display:inline-block; margin-right:4px; vertical-align:middle; }
-    .wai-cat-row { display:grid; grid-template-columns:72px 1fr; gap:4px 8px; align-items:center; margin-bottom:8px; }
+    .wai-cat-row { display:grid; grid-template-columns:72px 1fr; gap:4px 8px; align-items:center; margin-bottom:8px; min-width:0; }
     .wai-cat-label { font-size:0.72rem; color:#555; text-align:right; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .wai-bars { display:flex; flex-direction:column; gap:3px; }
-    .wai-bar-wrap { display:flex; align-items:center; gap:6px; }
+    .wai-bars { display:flex; flex-direction:column; gap:3px; min-width:0; overflow:hidden; }
+    .wai-bar-wrap { display:flex; align-items:center; gap:6px; min-width:0; overflow:hidden; }
     .wai-bar { height:11px; border-radius:3px; min-width:3px; flex-shrink:0; }
     .wai-bar.this-week { background:#0078d4; }
     .wai-bar.last-week { background:#94a3b8; }
-    .wai-bar-amt { font-size:0.68rem; color:#777; white-space:nowrap; }
+    .wai-bar-amt { font-size:0.68rem; color:#777; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:70px; }
+    /* spending overlay */
+    #spending-overlay { display:none; position:fixed; inset:0; z-index:500; background:#f5f6f8; flex-direction:column; }
+    #spending-overlay.open { display:flex; }
+    .spending-tab-bar { display:flex; gap:8px; padding:10px 16px; background:#fff; border-bottom:1px solid #e0e0e0; flex-shrink:0; }
+    .spending-tab { padding:6px 18px; border-radius:20px; border:1.5px solid #e0e0e0; background:#fff; font-size:0.82rem; font-weight:600; color:#555; cursor:pointer; font-family:inherit; transition:all 0.12s; }
+    .spending-tab.active { border-color:#0078d4; background:#e8f3fc; color:#0078d4; }
     .weekly-content {
       flex: 1;
       overflow-y: auto;
@@ -966,6 +972,7 @@
   <button id="history-btn" class="hmenu-item">영수증 이력</button>
   <button id="weekly-btn" class="hmenu-item">주간 지출 분석</button>
   <button id="purchase-btn" class="hmenu-item">뭘 샀을까?</button>
+  <button id="spending-btn" class="hmenu-item">소비 분석</button>
   <hr style="margin:4px 0;border:none;border-top:1px solid #e8e8e8">
   <button id="reset-btn" class="hmenu-item">대화 초기화</button>
   <button id="usage-btn" class="hmenu-item">사용량 확인</button>
@@ -1082,6 +1089,20 @@
     <button id="purchase-apply-btn" class="weekly-apply-btn">조회</button>
   </div>
   <div id="purchase-content" class="weekly-content"></div>
+</div>
+
+<!-- spending overlay -->
+<div id="spending-overlay">
+  <div class="weekly-header">
+    <button id="spending-back-btn" class="overlay-back-btn" title="뒤로">‹</button>
+    <button class="overlay-hamburger-btn" id="spending-hamburger-btn" title="메뉴">☰</button>
+    <span class="weekly-title">📊 소비 분석</span>
+  </div>
+  <div class="spending-tab-bar">
+    <button class="spending-tab active" data-mode="weekly">전주 비교</button>
+    <button class="spending-tab" data-mode="monthly">전월 비교</button>
+  </div>
+  <div id="spending-content" class="weekly-content"></div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
@@ -1215,7 +1236,7 @@
   }
 
   function _closeFullScreenOverlays() {
-    ["history-overlay", "weekly-overlay", "purchase-overlay"].forEach(id => {
+    ["history-overlay", "weekly-overlay", "purchase-overlay", "spending-overlay"].forEach(id => {
       document.getElementById(id)?.classList.remove("open");
     });
   }
@@ -1223,7 +1244,7 @@
   const _navStack = [];
 
   function _getCurrentPanel() {
-    return ["history-overlay", "weekly-overlay", "purchase-overlay"].find(
+    return ["history-overlay", "weekly-overlay", "purchase-overlay", "spending-overlay"].find(
       id => document.getElementById(id)?.classList.contains("open")
     ) || null;
   }
@@ -2359,6 +2380,16 @@
   document.getElementById("purchase-hamburger-btn").addEventListener("click", toggleHamburger);
   document.getElementById("purchase-apply-btn").addEventListener("click", openPurchasePanel);
 
+  document.getElementById("spending-btn").addEventListener("click", () => {
+    document.getElementById("hamburger-menu").classList.remove("open");
+    openSpendingPanel("weekly");
+  });
+  document.getElementById("spending-back-btn").addEventListener("click", _goBack);
+  document.getElementById("spending-hamburger-btn").addEventListener("click", toggleHamburger);
+  document.querySelectorAll(".spending-tab").forEach(tab => {
+    tab.addEventListener("click", () => openSpendingPanel(tab.dataset.mode));
+  });
+
   // ── 주간 지출 기본 날짜 ──────────────────────────────────────────────────
 
   function _weeklyDefaultDates() {
@@ -2415,13 +2446,6 @@
     const titleEl = document.querySelector(".weekly-title");
     titleEl.textContent = "📅 주간 지출 (불러오는 중…)";
 
-    // AI 분석 요청 — 히스토리 fetch와 병렬 실행
-    const aiPromise = fetch("/grocery/analyze-weekly", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({start_date: fromDate, end_date: toDate}),
-    }).then(r => r.json()).catch(() => ({summary: ""}));
-
     try {
       const url = `/grocery/history?start_date=${fromDate}&end_date=${toDate}`;
       const rows = await fetch(url).then(r => r.json());
@@ -2432,12 +2456,6 @@
         titleEl.textContent = "📅 주간 지출";
         return;
       }
-
-      // AI 분석 박스 — 최상단에 로딩 플레이스홀더
-      const aiBox = document.createElement("div");
-      aiBox.className = "weekly-ai-box weekly-ai-loading";
-      aiBox.textContent = "AI 소비 패턴 분석 중…";
-      content.appendChild(aiBox);
 
       function weekMonday(dateStr) {
         const d = new Date(dateStr + "T00:00:00");
@@ -2565,74 +2583,126 @@
 
         content.appendChild(card);
       });
+    } catch (err) {
+      content.innerHTML = `<p class="week-empty">오류: ${err.message}</p>`;
+    }
+  }
 
-      // AI 분석 결과 업데이트 (비동기 완료 시)
-      aiPromise.then(({summary, weeks}) => {
-        aiBox.classList.remove("weekly-ai-loading");
-        if (!summary && (!weeks || weeks.length === 0)) { aiBox.remove(); return; }
+  // ── 소비 분석 패널 ──────────────────────────────────────────
 
-        aiBox.innerHTML = "";
-        const titleEl = document.createElement("strong");
-        titleEl.textContent = "소비 패턴 분석";
-        aiBox.appendChild(titleEl);
+  function _renderSpendingChart(container, {summary, weeks}) {
+    container.innerHTML = "";
+    if (!summary && (!weeks || weeks.length === 0)) {
+      container.innerHTML = '<p class="week-empty">분석 결과가 없습니다.</p>';
+      return;
+    }
 
-        if (summary) {
-          const summaryEl = document.createElement("div");
-          summaryEl.className = "wai-summary";
-          summaryEl.innerHTML = summary.replace(/\\n|\n/g, "<br>");
-          aiBox.appendChild(summaryEl);
-        }
+    const box = document.createElement("div");
+    box.className = "weekly-ai-box";
 
-        if (weeks && weeks.length >= 1) {
-          const CATS = ["신선식품", "가공식품", "음료/주류", "생활용품", "반려동물용품", "기타"];
-          const thisWeek = weeks[0];
-          const lastWeek = weeks[1] || null;
+    const titleEl = document.createElement("strong");
+    titleEl.textContent = "소비 패턴 분석";
+    box.appendChild(titleEl);
 
-          const allAmts = CATS.flatMap(c => [
-            thisWeek.categories?.[c] || 0,
-            lastWeek ? (lastWeek.categories?.[c] || 0) : 0,
-          ]);
-          const maxAmt = Math.max(...allAmts, 1);
+    if (summary) {
+      const summaryEl = document.createElement("div");
+      summaryEl.className = "wai-summary";
+      summaryEl.innerHTML = summary.replace(/\\n|\n/g, "<br>");
+      box.appendChild(summaryEl);
+    }
 
-          const legend = document.createElement("div");
-          legend.className = "wai-legend-bar";
-          legend.innerHTML = `<span><span class="wai-legend-dot" style="background:#0078d4"></span>${thisWeek.label || "이번 주"} ${(thisWeek.total || 0).toLocaleString("ko-KR")}원</span>${lastWeek ? `<span><span class="wai-legend-dot" style="background:#94a3b8"></span>${lastWeek.label || "지난 주"} ${(lastWeek.total || 0).toLocaleString("ko-KR")}원</span>` : ""}`;
-          aiBox.appendChild(legend);
+    if (weeks && weeks.length >= 1) {
+      const CATS = ["신선식품", "가공식품", "음료/주류", "생활용품", "반려동물용품", "기타"];
+      const thisWeek = weeks[0];
+      const lastWeek = weeks[1] || null;
 
-          const mkBar = (amt, cls) => {
-            const wrap = document.createElement("div");
-            wrap.className = "wai-bar-wrap";
-            const bar = document.createElement("div");
-            bar.className = `wai-bar ${cls}`;
-            bar.style.width = `${((amt / maxAmt) * 100).toFixed(1)}%`;
-            const lbl = document.createElement("span");
-            lbl.className = "wai-bar-amt";
-            lbl.textContent = amt > 0 ? amt.toLocaleString("ko-KR") + "원" : "";
-            wrap.appendChild(bar);
-            wrap.appendChild(lbl);
-            return wrap;
-          };
+      const allAmts = CATS.flatMap(c => [
+        thisWeek.categories?.[c] || 0,
+        lastWeek ? (lastWeek.categories?.[c] || 0) : 0,
+      ]);
+      const maxAmt = Math.max(...allAmts, 1);
 
-          CATS.forEach(cat => {
-            const thisAmt = thisWeek.categories?.[cat] || 0;
-            const lastAmt = lastWeek?.categories?.[cat] || 0;
-            if (thisAmt === 0 && lastAmt === 0) return;
+      const legend = document.createElement("div");
+      legend.className = "wai-legend-bar";
+      legend.innerHTML = `<span><span class="wai-legend-dot" style="background:#0078d4"></span>${thisWeek.label || "이번 주"} ${(thisWeek.total || 0).toLocaleString("ko-KR")}원</span>${lastWeek ? `<span><span class="wai-legend-dot" style="background:#94a3b8"></span>${lastWeek.label || "지난 주"} ${(lastWeek.total || 0).toLocaleString("ko-KR")}원</span>` : ""}`;
+      box.appendChild(legend);
 
-            const row = document.createElement("div");
-            row.className = "wai-cat-row";
-            const label = document.createElement("div");
-            label.className = "wai-cat-label";
-            label.textContent = cat;
-            const bars = document.createElement("div");
-            bars.className = "wai-bars";
-            bars.appendChild(mkBar(thisAmt, "this-week"));
-            if (lastWeek) bars.appendChild(mkBar(lastAmt, "last-week"));
-            row.appendChild(label);
-            row.appendChild(bars);
-            aiBox.appendChild(row);
-          });
-        }
+      const mkBar = (amt, cls) => {
+        const wrap = document.createElement("div");
+        wrap.className = "wai-bar-wrap";
+        const bar = document.createElement("div");
+        bar.className = `wai-bar ${cls}`;
+        bar.style.width = `${((amt / maxAmt) * 100).toFixed(1)}%`;
+        const lbl = document.createElement("span");
+        lbl.className = "wai-bar-amt";
+        lbl.textContent = amt > 0 ? amt.toLocaleString("ko-KR") + "원" : "";
+        wrap.appendChild(bar);
+        wrap.appendChild(lbl);
+        return wrap;
+      };
+
+      CATS.forEach(cat => {
+        const thisAmt = thisWeek.categories?.[cat] || 0;
+        const lastAmt = lastWeek?.categories?.[cat] || 0;
+        if (thisAmt === 0 && lastAmt === 0) return;
+
+        const row = document.createElement("div");
+        row.className = "wai-cat-row";
+        const label = document.createElement("div");
+        label.className = "wai-cat-label";
+        label.textContent = cat;
+        const bars = document.createElement("div");
+        bars.className = "wai-bars";
+        bars.appendChild(mkBar(thisAmt, "this-week"));
+        if (lastWeek) bars.appendChild(mkBar(lastAmt, "last-week"));
+        row.appendChild(label);
+        row.appendChild(bars);
+        box.appendChild(row);
       });
+    }
+
+    container.appendChild(box);
+  }
+
+  let _spendingMode = "weekly";
+
+  function _spendingDefaultDates(mode) {
+    const today = new Date();
+    const end = today.toISOString().slice(0, 10);
+    if (mode === "weekly") {
+      const s = new Date(today);
+      s.setDate(s.getDate() - 13);
+      return { start: s.toISOString().slice(0, 10), end };
+    } else {
+      const s = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      return { start: s.toISOString().slice(0, 10), end };
+    }
+  }
+
+  async function openSpendingPanel(mode) {
+    _spendingMode = mode || _spendingMode;
+    _pushAndClose("spending-overlay");
+    document.getElementById("spending-overlay").classList.add("open");
+
+    document.querySelectorAll(".spending-tab").forEach(t =>
+      t.classList.toggle("active", t.dataset.mode === _spendingMode)
+    );
+
+    const content = document.getElementById("spending-content");
+    content.innerHTML = '<p class="week-empty">AI 분석 중…</p>';
+
+    const { start, end } = _spendingDefaultDates(_spendingMode);
+    const endpoint = _spendingMode === "weekly"
+      ? "/grocery/analyze-weekly"
+      : "/grocery/analyze-monthly";
+
+    try {
+      const data = await fetch(endpoint, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({start_date: start, end_date: end}),
+      }).then(r => r.json());
+      _renderSpendingChart(content, data);
     } catch (err) {
       content.innerHTML = `<p class="week-empty">오류: ${err.message}</p>`;
     }

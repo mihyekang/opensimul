@@ -787,6 +787,90 @@ async def analyze_weekly(req: PurchaseAnalysisRequest, user_id: str = Depends(ge
     }
 
 
+@app.post("/grocery/analyze-monthly")
+async def analyze_monthly(req: PurchaseAnalysisRequest, user_id: str = Depends(get_current_user)):
+    """월별 소비 패턴 비교 분석 (AI) — 최근 2개월 비교."""
+    _validate_date(req.start_date, "start_date")
+    _validate_date(req.end_date, "end_date")
+    if not state.db_enabled:
+        return {"summary": "", "weeks": []}
+
+    loop = asyncio.get_event_loop()
+    items = await loop.run_in_executor(
+        None, lambda: db.get_items_by_date_range(user_id, req.start_date, req.end_date)
+    )
+    if not items:
+        return {"summary": "", "weeks": []}
+
+    from datetime import date as _date
+
+    def month_key(date_str: str) -> str:
+        d = _date.fromisoformat(date_str)
+        return f"{d.year}-{d.month:02d}"
+
+    month_map: dict = {}
+    for item in items:
+        if not item.get("purchase_date"):
+            continue
+        month_map.setdefault(month_key(item["purchase_date"]), []).append(item)
+
+    if not month_map:
+        return {"summary": "", "weeks": []}
+
+    sorted_months = sorted(month_map.keys(), reverse=True)[:2]
+    labels = ["이번 달", "지난 달"]
+    weeks_info = []
+    for idx, key in enumerate(sorted_months):
+        month_items = month_map[key]
+        total = sum(i["amount"] for i in month_items)
+        weeks_info.append({
+            "기간": key,
+            "label": labels[idx],
+            "총액_원": total,
+            "품목": [{"품목": i["raw_name"], "금액": i["amount"]} for i in month_items],
+        })
+
+    prompt = (
+        "다음 월별 장보기 소비를 비교 분석해줘.\n\n"
+        f"{json.dumps(weeks_info, ensure_ascii=False, indent=2)}\n\n"
+        "응답은 반드시 아래 JSON 형식으로만 출력해 (다른 텍스트 없이):\n"
+        "{\n"
+        '  "summary": "3줄 이내 핵심 분석 (금액 포함, 줄바꿈은 실제 개행문자 사용)",\n'
+        '  "weeks": [\n'
+        '    {\n'
+        '      "label": "이번 달",\n'
+        '      "period": "YYYY-MM",\n'
+        '      "total": 200000,\n'
+        '      "categories": {"신선식품": 80000, "가공식품": 50000, "음료/주류": 0, "생활용품": 20000, "반려동물용품": 0, "기타": 0}\n'
+        '    }\n'
+        '  ]\n'
+        "}\n\n"
+        "카테고리 기준:\n"
+        "- 신선식품: 채소, 과일, 육류, 수산물, 유제품, 계란\n"
+        "- 가공식품: 라면, 통조림, 과자, 빵, 냉동식품, 조미료\n"
+        "- 음료/주류: 음료, 물, 맥주, 소주, 커피, 차\n"
+        "- 생활용품: 세제, 휴지, 청소용품, 위생용품\n"
+        "- 반려동물용품: 사료, 간식, 장난감, 배변패드, 모래, 펫 관련 용품\n"
+        "- 기타: 위 카테고리에 해당 없는 항목\n\n"
+        "weeks 배열은 최신 달 먼저. label은 '이번 달'/'지난 달'로."
+    )
+
+    c = _client("__monthly_analysis__")
+    reply, _ = await loop.run_in_executor(None, lambda: c.chat(prompt))
+
+    import re as _re
+    m = _re.search(r"\{[\s\S]*\}", reply)
+    try:
+        parsed = json.loads(m.group(0)) if m else {}
+    except Exception:
+        parsed = {}
+
+    return {
+        "summary": parsed.get("summary", reply.strip()[:300]),
+        "weeks": parsed.get("weeks", []),
+    }
+
+
 @app.get("/grocery/receipt/{receipt_id}")
 async def grocery_get_receipt(receipt_id: int, user_id: str = Depends(get_current_user)):
     """영수증 상세 조회 (소유자만 가능)."""
