@@ -5,6 +5,7 @@ Run: uvicorn app:app --reload
 
 import asyncio
 import base64
+import difflib
 import io
 import json
 import logging
@@ -112,6 +113,10 @@ class RegisterRequest(BaseModel):
         if not any(c.islower() for c in v) or not any(c.isupper() for c in v):
             raise ValueError("비밀번호는 대문자와 소문자를 포함해야 합니다")
         return v
+
+
+class SpellCheckRequest(BaseModel):
+    names: list[str]
 
 
 class PushTokenRequest(BaseModel):
@@ -657,6 +662,25 @@ async def grocery_update_item(item_id: int, req: GroceryItemUpdateRequest, user_
         item_id, req.raw_name, req.qty, req.unit_price, req.amount, user_id
     ))
     return {"ok": updated}
+
+
+@app.post("/grocery/suggest-names")
+async def grocery_suggest_names(req: SpellCheckRequest, user_id: str = Depends(get_current_user)):
+    """품목명 오타 후보 반환. {원본명: 추천명} 형태."""
+    if not user_id or not state.db_enabled:
+        return {"suggestions": {}}
+    loop = asyncio.get_event_loop()
+    known = await loop.run_in_executor(None, lambda: db.get_known_item_names(user_id))
+    if not known:
+        return {"suggestions": {}}
+    result = {}
+    for name in req.names:
+        if not name or len(name) < 2:
+            continue
+        matches = difflib.get_close_matches(name, known, n=1, cutoff=0.6)
+        if matches and matches[0] != name:
+            result[name] = matches[0]
+    return {"suggestions": result}
 
 
 # ---------- pantry ----------

@@ -584,6 +584,19 @@
       transition: border-color 0.12s, color 0.12s;
     }
     .edit-btn-add-row:hover { border-color: #0078d4; color: #0078d4; }
+    .spell-chip {
+      display: inline-block;
+      margin-top: 3px;
+      padding: 2px 7px;
+      font-size: 0.7rem;
+      background: #fff7ed;
+      border: 1px solid #f97316;
+      color: #c2410c;
+      border-radius: 10px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .spell-chip:hover { background: #f97316; color: #fff; }
     .edit-actions { display: flex; gap: 8px; margin-top: 12px; }
     .edit-btn-cancel {
       flex: 1; padding: 9px;
@@ -1243,6 +1256,39 @@
   }
 
   // ── helpers ──
+  async function applySuggestions(tbody, itemsData) {
+    const names = itemsData.map(i => i.raw_name || "").filter(n => n.length >= 2);
+    if (!names.length) return;
+    try {
+      const resp = await fetch("/grocery/suggest-names", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ names }),
+      });
+      if (!resp.ok) return;
+      const { suggestions } = await resp.json();
+      if (!Object.keys(suggestions).length) return;
+      [...tbody.querySelectorAll("tr")].forEach((tr, i) => {
+        const name = itemsData[i]?.raw_name;
+        const sug = suggestions[name];
+        if (!sug) return;
+        const nameInp = tr.querySelector("input");
+        if (!nameInp) return;
+        const chip = document.createElement("button");
+        chip.className = "spell-chip";
+        chip.type = "button";
+        chip.textContent = `혹시 '${sug}'?`;
+        chip.title = "클릭하면 교체됩니다";
+        chip.addEventListener("click", () => {
+          nameInp.value = sug;
+          itemsData[i].raw_name = sug;
+          chip.remove();
+        });
+        tr.querySelector("td").appendChild(chip);
+      });
+    } catch {}
+  }
+
   function escHtml(s) {
     return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
   }
@@ -1566,6 +1612,7 @@
         });
       }
       renderRows();
+      applySuggestions(tbody, itemsData);
       table.appendChild(tbody);
       card.appendChild(table);
 
