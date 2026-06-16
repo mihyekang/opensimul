@@ -645,18 +645,19 @@ async def analyze_purchases(req: PurchaseAnalysisRequest, user_id: str = Depends
     if not items:
         return {"summary": "", "categories": [], "items": []}
 
-    item_names = [i["raw_name"] for i in items]
+    item_list = [{"품목": i["raw_name"], "금액": i["amount"]} for i in items]
     prompt = (
-        "다음 구매 품목 목록을 분석해줘.\n\n"
-        f"품목: {json.dumps(item_names, ensure_ascii=False)}\n\n"
+        "다음 구매 품목 목록과 금액을 분석해줘.\n\n"
+        f"품목 및 금액: {json.dumps(item_list, ensure_ascii=False)}\n\n"
         "응답을 반드시 아래 JSON 형식으로만 출력해 (다른 텍스트 없이):\n"
         "{\n"
-        '  "summary": "구매 패턴 분석 3줄 이내 (개행은 \\\\n 사용)",\n'
+        '  "summary": "금액을 포함한 소비 경향 3줄 이내. 줄바꿈은 실제 개행문자 사용",\n'
         '  "categories": {\n'
         '    "신선식품": ["품목명1", ...],\n'
         '    "가공식품": [...],\n'
         '    "음료/주류": [...],\n'
         '    "생활용품": [...],\n'
+        '    "반려동물용품": [...],\n'
         '    "기타": [...]\n'
         "  }\n"
         "}\n\n"
@@ -665,6 +666,7 @@ async def analyze_purchases(req: PurchaseAnalysisRequest, user_id: str = Depends
         "- 가공식품: 라면, 통조림, 과자, 빵, 냉동식품, 조미료\n"
         "- 음료/주류: 음료, 물, 맥주, 소주, 커피, 차\n"
         "- 생활용품: 세제, 휴지, 청소용품, 위생용품\n"
+        "- 반려동물용품: 사료, 간식, 장난감, 배변패드, 모래, 펫 관련 용품\n"
         "- 기타: 위 카테고리에 해당 없는 항목"
     )
 

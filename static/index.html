@@ -809,7 +809,9 @@
     .purchase-sort-bar { display:flex; gap:6px; padding:8px 16px; background:#fff; border-bottom:1px solid #e0e0e0; flex-shrink:0; overflow-x:auto; }
     .purchase-sort-btn { padding:4px 12px; border-radius:20px; border:1.5px solid #e0e0e0; background:#fff; font-size:0.75rem; font-weight:600; color:#555; cursor:pointer; white-space:nowrap; transition:all 0.12s; }
     .purchase-sort-btn.active { border-color:#0078d4; background:#e8f3fc; color:#0078d4; }
-    .purchase-ai-box { margin:14px 16px 10px; padding:11px 14px; background:#fff; border-radius:10px; border-left:3px solid #0078d4; font-size:0.82rem; color:#333; line-height:1.65; }
+    .purchase-total-banner { display:flex; justify-content:space-between; align-items:center; margin:14px 16px 0; padding:12px 16px; background:#0078d4; border-radius:10px; color:#fff; font-size:0.85rem; }
+    .purchase-total-banner strong { font-size:1.05rem; }
+    .purchase-ai-box { margin:10px 16px 10px; padding:11px 14px; background:#fff; border-radius:10px; border-left:3px solid #0078d4; font-size:0.82rem; color:#333; line-height:1.65; }
     .purchase-donut-wrap { display:flex; align-items:center; gap:14px; margin:0 16px 14px; background:#fff; border-radius:10px; padding:14px; }
     .purchase-legend { display:flex; flex-direction:column; gap:5px; flex:1; min-width:0; }
     .purchase-legend-item { display:flex; align-items:center; gap:8px; font-size:0.78rem; cursor:pointer; border-radius:6px; padding:4px 6px; transition:background 0.1s; }
@@ -2154,7 +2156,7 @@
   }
 
   function _buildDonutSvg(categories, totalAmt) {
-    const R = 50, CX = 60, CY = 60, STROKE = 22;
+    const R = 50, CX = 70, CY = 70, STROKE = 20;
     const circ = 2 * Math.PI * R;
     let offset = 0;
     const segs = categories.map((cat, i) => {
@@ -2168,7 +2170,7 @@
       offset += dash;
       return seg;
     }).join("");
-    return `<svg width="120" height="120" viewBox="0 0 120 120">${segs}
+    return `<svg width="140" height="140" viewBox="0 0 140 140">${segs}
       <circle cx="${CX}" cy="${CY}" r="${R - STROKE / 2 - 1}" fill="#f5f6fa"/>
     </svg>`;
   }
@@ -2217,11 +2219,18 @@
     const content = document.getElementById("purchase-content");
     content.innerHTML = "";
 
+    // 총 금액 배너
+    const totalAmt = (_purchaseData.items || []).reduce((s, i) => s + (i.amount || 0), 0);
+    const banner = document.createElement("div");
+    banner.className = "purchase-total-banner";
+    banner.innerHTML = `<span>총 지출</span><strong>${totalAmt.toLocaleString("ko-KR")}원</strong>`;
+    content.appendChild(banner);
+
     // AI 요약
     if (_purchaseData.summary) {
       const aiBox = document.createElement("div");
       aiBox.className = "purchase-ai-box";
-      aiBox.innerHTML = `<strong>구매 분석</strong><br>${_purchaseData.summary.replace(/\n/g, "<br>")}`;
+      aiBox.innerHTML = `<strong>구매 분석</strong><br>${_purchaseData.summary.replace(/\\n|\n/g, "<br>")}`;
       content.appendChild(aiBox);
     }
 
