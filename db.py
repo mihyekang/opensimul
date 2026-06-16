@@ -656,14 +656,24 @@ def deduct_pantry_qty(user_id: str, keyword: str, qty_used: int) -> dict:
 # ── user sessions ─────────────────────────────────────────────────────────────
 
 _SESSION_TTL_DAYS = 30
+_MAX_SESSIONS_PER_USER = 5
 
 
 def create_user_session(user_code: str) -> str:
-    """랜덤 토큰을 생성해 DB에 저장하고 반환."""
+    """랜덤 토큰을 생성해 DB에 저장하고 반환. 세션이 5개를 초과하면 가장 오래된 것부터 삭제."""
     token = secrets.token_hex(32)
     expires_at = date.today() + timedelta(days=_SESSION_TTL_DAYS)
     with _get_conn() as conn:
         with conn.cursor() as cur:
+            cur.execute("""
+                DELETE FROM user_sessions
+                WHERE token IN (
+                    SELECT token FROM user_sessions
+                    WHERE user_code = %s
+                    ORDER BY expires_at ASC
+                    OFFSET %s
+                )
+            """, (user_code, _MAX_SESSIONS_PER_USER - 1))
             cur.execute(
                 "INSERT INTO user_sessions (token, user_code, expires_at) VALUES (%s, %s, %s)",
                 (token, user_code, expires_at),
