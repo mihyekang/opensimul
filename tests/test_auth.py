@@ -11,8 +11,8 @@ from unittest.mock import patch
 # ── DB 비활성화 폴백 ──────────────────────────────────────────────────────────
 
 class TestLoginNoDb:
-    def test_db_disabled_sets_cookie_to_user_code(self, reset_app_state):
-        """DB 없으면 user_code 값을 sid 쿠키로 직접 세팅."""
+    def test_db_disabled_returns_503(self, reset_app_state):
+        """DB 없으면 로그인 자체를 차단(503), 가짜 쿠키 발급 금지."""
         import app as _app
         from app import app
         from fastapi.testclient import TestClient
@@ -25,10 +25,53 @@ class TestLoginNoDb:
             with TestClient(app) as c:
                 # lifespan 후 db_enabled는 False (환경변수 없으므로) — 원하는 상태 그대로
                 resp = c.post("/auth/login", json={"user_code": "alice", "password": "any"})
+        assert resp.status_code == 503
+        assert "sid" not in resp.cookies
+
+    def test_register_db_disabled_returns_503(self, reset_app_state):
+        """DB 없으면 회원가입도 차단(503), 가짜 쿠키 발급 금지."""
+        from app import app
+        from fastapi.testclient import TestClient
+        from unittest.mock import patch, MagicMock
+
+        mock_config = MagicMock()
+        mock_config.verify_ssl = False
+        with patch("app.ClientConfig", return_value=mock_config), \
+             patch("app.fetch_usd_to_krw", return_value=(1300.0, "test")):
+            with TestClient(app) as c:
+                resp = c.post("/auth/register", json={"user_code": "alice", "password": "TestPass1"})
+        assert resp.status_code == 503
+        assert "sid" not in resp.cookies
+
+    def test_authed_endpoint_with_cookie_db_disabled_returns_503(self, reset_app_state):
+        """db_enabled=False 상태에서 sid 쿠키를 위조해도 인증 필요 엔드포인트는 차단된다."""
+        from app import app
+        from fastapi.testclient import TestClient
+        from unittest.mock import patch, MagicMock
+
+        mock_config = MagicMock()
+        mock_config.verify_ssl = False
+        with patch("app.ClientConfig", return_value=mock_config), \
+             patch("app.fetch_usd_to_krw", return_value=(1300.0, "test")):
+            with TestClient(app) as c:
+                c.cookies.set("sid", "forged-arbitrary-value")
+                resp = c.get("/auth/session")
+        assert resp.status_code == 503
+
+    def test_anonymous_no_cookie_db_disabled_still_allowed(self, reset_app_state):
+        """쿠키가 없는 익명 요청은 db_enabled=False여도 차단되지 않는다(user_id="")."""
+        from app import app
+        from fastapi.testclient import TestClient
+        from unittest.mock import patch, MagicMock
+
+        mock_config = MagicMock()
+        mock_config.verify_ssl = False
+        with patch("app.ClientConfig", return_value=mock_config), \
+             patch("app.fetch_usd_to_krw", return_value=(1300.0, "test")):
+            with TestClient(app) as c:
+                resp = c.get("/auth/session")
         assert resp.status_code == 200
-        assert resp.json()["ok"] is True
-        assert resp.json()["user_code"] == "alice"
-        assert "sid" in resp.cookies
+        assert resp.json()["user_id"] == ""
 
 
 # ── 로그인 ────────────────────────────────────────────────────────────────────
