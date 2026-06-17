@@ -1107,6 +1107,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
 <script src="/static/native.js"></script>
 <script>
   // ── auth guard ──
@@ -1336,7 +1337,7 @@
 
   function renderMarkdown(bubble, raw) {
     bubble.classList.remove("streaming", "typing-cursor");
-    bubble.innerHTML = marked.parse(raw);
+    bubble.innerHTML = DOMPurify.sanitize(marked.parse(raw));
     bubble.querySelectorAll("pre code:not(.hljs)").forEach(el => hljs.highlightElement(el));
   }
 
@@ -2297,7 +2298,9 @@
     if (_purchaseData.summary) {
       const aiBox = document.createElement("div");
       aiBox.className = "purchase-ai-box";
-      aiBox.innerHTML = `<strong>구매 분석</strong><br>${_purchaseData.summary.replace(/\\n|\n/g, "<br>")}`;
+      aiBox.innerHTML = DOMPurify.sanitize(
+        `<strong>구매 분석</strong><br>${_purchaseData.summary.replace(/\\n|\n/g, "<br>")}`
+      );
       content.appendChild(aiBox);
     }
 
@@ -2607,7 +2610,7 @@
     if (summary) {
       const summaryEl = document.createElement("div");
       summaryEl.className = "wai-summary";
-      summaryEl.innerHTML = summary.replace(/\\n|\n/g, "<br>");
+      summaryEl.innerHTML = DOMPurify.sanitize(summary.replace(/\\n|\n/g, "<br>"));
       box.appendChild(summaryEl);
     }
 
@@ -2933,7 +2936,7 @@ ${weeksHtml}
       if (item.is_cancelled) tr.className = "cancelled";
       else if ((item.amount || 0) < 0) tr.className = "discount";
       tr.innerHTML = `
-        <td>${item.raw_name || "—"}</td>
+        <td>${_rcptEsc(item.raw_name) || "—"}</td>
         <td style="text-align:center;color:#bbb;width:28px">${(item.qty || 1) > 1 ? item.qty : ""}</td>
         <td>${fmt(item.amount)}</td>
       `;
