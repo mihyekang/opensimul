@@ -387,7 +387,25 @@
     .hrc.checked .hrc-check { background: #0078d4; border-color: #0078d4; color: #fff; }
     .hrc-icon { font-size: 1.2rem; flex-shrink: 0; padding-top: 1px; }
     .hrc-body { flex: 1; min-width: 0; }
-    .hrc-merchant { font-size: 0.9rem; font-weight: 700; color: #111; word-break: keep-all; }
+    .hrc-merchant {
+      font-size: 0.9rem; font-weight: 700; color: #111; word-break: keep-all;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .hrc-merchant.mc-expanded {
+      display: block;
+      -webkit-line-clamp: unset;
+      overflow: visible;
+    }
+    .hrc-merchant-toggle {
+      display: none;
+      margin-top: 2px;
+      font-size: 0.72rem; font-weight: 600; color: #0078d4;
+      background: none; border: none; padding: 0; cursor: pointer; font-family: inherit;
+    }
+    .hrc-merchant-toggle.visible { display: inline-block; }
     .hrc-meta { font-size: 0.73rem; color: #888; margin-top: 3px; }
     .hrc-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
     .hrc-amount { font-size: 0.88rem; font-weight: 700; color: #111; white-space: nowrap; }
@@ -2091,6 +2109,15 @@
       }
       rows.forEach(r => list.appendChild(_buildHistoryCard(r)));
       _renderFilterBar(rows, filterMerchant);
+      requestAnimationFrame(() => {
+        list.querySelectorAll(".hrc").forEach(card => {
+          const m = card.querySelector(".hrc-merchant");
+          const btn = card.querySelector(".hrc-merchant-toggle");
+          if (m && btn && m.scrollHeight > m.clientHeight + 1) {
+            btn.classList.add("visible");
+          }
+        });
+      });
     } catch (err) {
       list.innerHTML = `<p class="history-empty">오류: ${err.message}</p>`;
     }
@@ -2829,10 +2856,19 @@ ${weeksHtml}
     const merchantDiv = document.createElement("div");
     merchantDiv.className = "hrc-merchant";
     merchantDiv.textContent = r.merchant || "알 수 없음";
+    const merchantToggle = document.createElement("button");
+    merchantToggle.className = "hrc-merchant-toggle";
+    merchantToggle.textContent = "▼ 더보기";
+    merchantToggle.addEventListener("click", e => {
+      e.stopPropagation();
+      const expanded = merchantDiv.classList.toggle("mc-expanded");
+      merchantToggle.textContent = expanded ? "▲ 접기" : "▼ 더보기";
+    });
     const metaDiv = document.createElement("div");
     metaDiv.className = "hrc-meta";
     metaDiv.textContent = `${r.purchase_date || "날짜 미상"} · ${r.item_count ?? 0}개 품목`;
     body.appendChild(merchantDiv);
+    body.appendChild(merchantToggle);
     body.appendChild(metaDiv);
 
     const right = document.createElement("div");
