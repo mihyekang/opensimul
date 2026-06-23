@@ -1245,12 +1245,16 @@
 
   // ── info ──
   async function loadInfo() {
-    const d = await fetch(`/info?session_id=${SESSION_ID}`).then(r => r.json());
-    document.getElementById("deployment-label").textContent = `모델: ${d.deployment}`;
-    document.getElementById("rate-label").textContent =
-      `환율: 1 USD = ₩${d.usd_to_krw.toLocaleString("ko-KR", { maximumFractionDigits: 1 })} (${d.rate_date})`;
-    updateCostLabel(d.total_cost_usd, d.total_cost_krw, d.total_tokens);
-    updateTurnsLabel(d.current_turns, d.max_history_turns);
+    try {
+      const d = await fetch(`/info?session_id=${SESSION_ID}`).then(r => r.json());
+      document.getElementById("deployment-label").textContent = `모델: ${d.deployment}`;
+      document.getElementById("rate-label").textContent =
+        `환율: 1 USD = ₩${d.usd_to_krw.toLocaleString("ko-KR", { maximumFractionDigits: 1 })} (${d.rate_date})`;
+      updateCostLabel(d.total_cost_usd, d.total_cost_krw, d.total_tokens);
+      updateTurnsLabel(d.current_turns, d.max_history_turns);
+    } catch (err) {
+      console.error("정보 조회 실패:", err);
+    }
   }
 
   function updateCostLabel(usd, krw, tokens) {
@@ -1323,7 +1327,11 @@
 
   document.getElementById("logout-btn").addEventListener("click", async e => {
     e.stopPropagation();
-    await fetch("/auth/logout", { method: "POST" });
+    try {
+      await fetch("/auth/logout", { method: "POST" });
+    } catch (err) {
+      console.error("로그아웃 요청 실패(네트워크 오류) — 로컬 로그아웃은 계속 진행:", err);
+    }
     localStorage.removeItem("grocery_user_code");
     window.location.href = "/grocery";
   });
@@ -1387,7 +1395,7 @@
       updateCostLabel(u.total_cost_usd, u.total_cost_krw, u.total_tokens);
     }
     // turns 카운터 갱신
-    fetch("/info").then(r => r.json()).then(d => updateTurnsLabel(d.current_turns, d.max_history_turns));
+    fetch("/info").then(r => r.json()).then(d => updateTurnsLabel(d.current_turns, d.max_history_turns)).catch(err => console.error("턴 수 갱신 실패:", err));
   }
 
   // ── send dispatcher ──
@@ -1609,11 +1617,16 @@
   // ── reset ──
   async function resetChat() {
     if (!confirm("대화 기록을 초기화할까요?")) return;
-    await fetch("/reset", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ session_id: SESSION_ID }),
-    });
+    try {
+      await fetch("/reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: SESSION_ID }),
+      });
+    } catch (err) {
+      alert("초기화 요청에 실패했습니다. 네트워크 상태를 확인해주세요.");
+      return;
+    }
     chatWrap.innerHTML = "";
     clearImage();
     await loadInfo();

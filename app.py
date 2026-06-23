@@ -452,7 +452,7 @@ async def chat_stream(req: ChatRequest, user_id: str = Depends(get_current_user)
             finally:
                 loop.call_soon_threadsafe(queue.put_nowait, None)
 
-        await loop.run_in_executor(None, produce)
+        producer_future = loop.run_in_executor(None, produce)
 
         while True:
             item = await queue.get()
@@ -463,6 +463,8 @@ async def chat_stream(req: ChatRequest, user_id: str = Depends(get_current_user)
                 yield f"data: {json.dumps({'token': item['token']})}\n\n"
             elif "tool_call" in item:
                 yield f"data: {json.dumps({'tool_call': item['tool_call'], 'args': item.get('args', {})})}\n\n"
+
+        await producer_future
 
         assistant_reply = "".join(collected)
         await _save_turn(req.session_id, req.message, assistant_reply)
