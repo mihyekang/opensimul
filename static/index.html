@@ -706,7 +706,17 @@
       display: flex;
       gap: 6px;
       flex-wrap: wrap;
+      overflow: hidden;
+      transition: max-height 0.15s ease;
     }
+    .history-filter-toggle {
+      display: none;
+      align-self: flex-start;
+      margin-top: 2px;
+      font-size: 0.74rem; font-weight: 600; color: #0078d4;
+      background: none; border: none; padding: 0; cursor: pointer; font-family: inherit;
+    }
+    .history-filter-toggle.visible { display: inline-block; }
     .hfc {
       padding: 5px 12px;
       border-radius: 20px;
@@ -2171,10 +2181,32 @@
       chipsEl.appendChild(btn);
     });
 
+    const chipToggle = document.createElement("button");
+    chipToggle.className = "history-filter-toggle";
+    chipToggle.textContent = "▼ 더보기";
+    chipToggle.addEventListener("click", () => {
+      const expanded = chipsEl.classList.toggle("hfc-expanded");
+      chipsEl.style.maxHeight = expanded ? "none" : chipsEl.dataset.clampHeight + "px";
+      chipToggle.textContent = expanded ? "▲ 접기" : "▼ 더보기";
+    });
+
     bar.innerHTML = "";
     bar.appendChild(chipsEl);
+    bar.appendChild(chipToggle);
     bar.appendChild(statEl);
     bar.style.display = "flex";
+
+    // 칩이 2줄을 넘으면 접어두고 ▼ 버튼으로 펼치게 함
+    requestAnimationFrame(() => {
+      const chips = Array.from(chipsEl.children);
+      const baseTop = chipsEl.getBoundingClientRect().top;
+      const rowTops = [...new Set(chips.map(c => Math.round(c.getBoundingClientRect().top - baseTop)))].sort((a, b) => a - b);
+      if (rowTops.length > 2) {
+        chipsEl.dataset.clampHeight = rowTops[2];
+        chipsEl.style.maxHeight = rowTops[2] + "px";
+        chipToggle.classList.add("visible");
+      }
+    });
 
     // 초기 필터 (weekly 패널에서 업체명 클릭 시)
     if (initialFilter && merchants.includes(initialFilter)) {
