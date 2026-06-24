@@ -866,6 +866,8 @@
     /* purchase overlay */
     #purchase-overlay { display:none; position:fixed; inset:0; z-index:500; background:#f5f6fa; flex-direction:column; }
     #purchase-overlay.open { display:flex; }
+    #eaten-overlay { display:none; position:fixed; inset:0; z-index:500; background:#f5f6fa; flex-direction:column; }
+    #eaten-overlay.open { display:flex; }
     .purchase-sort-bar { display:flex; gap:6px; padding:8px 16px; background:#fff; border-bottom:1px solid #e0e0e0; flex-shrink:0; overflow-x:auto; }
     .purchase-sort-btn { padding:4px 12px; border-radius:20px; border:1.5px solid #e0e0e0; background:#fff; font-size:0.75rem; font-weight:600; color:#555; cursor:pointer; white-space:nowrap; transition:all 0.12s; }
     .purchase-sort-btn.active { border-color:#0078d4; background:#e8f3fc; color:#0078d4; }
@@ -1007,6 +1009,7 @@
   <button id="history-btn" class="hmenu-item">영수증 이력</button>
   <button id="weekly-btn" class="hmenu-item">주간 지출 분석</button>
   <button id="purchase-btn" class="hmenu-item">뭘 샀을까?</button>
+  <button id="eaten-btn" class="hmenu-item">뭘 먹었을까?</button>
   <button id="spending-btn" class="hmenu-item">소비 분석</button>
   <hr style="margin:4px 0;border:none;border-top:1px solid #e8e8e8">
   <button id="reset-btn" class="hmenu-item">대화 초기화</button>
@@ -1124,6 +1127,22 @@
     <button id="purchase-apply-btn" class="weekly-apply-btn">조회</button>
   </div>
   <div id="purchase-content" class="weekly-content"></div>
+</div>
+
+<div id="eaten-overlay">
+  <div class="weekly-header">
+    <button id="eaten-back-btn" class="overlay-back-btn" title="뒤로">‹</button>
+    <button class="overlay-hamburger-btn" id="eaten-hamburger-btn" title="메뉴">☰</button>
+    <span id="eaten-title" class="weekly-title">🍽️ 뭘 먹었을까?</span>
+  </div>
+  <div class="weekly-date-bar">
+    <span class="weekly-date-label">기간</span>
+    <input type="date" id="eaten-start-date" />
+    <span class="weekly-date-sep">~</span>
+    <input type="date" id="eaten-end-date" />
+    <button id="eaten-apply-btn" class="weekly-apply-btn">조회</button>
+  </div>
+  <div id="eaten-content" class="weekly-content"></div>
 </div>
 
 <!-- spending overlay -->
@@ -1276,7 +1295,7 @@
   }
 
   function _closeFullScreenOverlays() {
-    ["history-overlay", "weekly-overlay", "purchase-overlay", "spending-overlay"].forEach(id => {
+    ["history-overlay", "weekly-overlay", "purchase-overlay", "eaten-overlay", "spending-overlay"].forEach(id => {
       document.getElementById(id)?.classList.remove("open");
     });
   }
@@ -1284,7 +1303,7 @@
   const _navStack = [];
 
   function _getCurrentPanel() {
-    return ["history-overlay", "weekly-overlay", "purchase-overlay", "spending-overlay"].find(
+    return ["history-overlay", "weekly-overlay", "purchase-overlay", "eaten-overlay", "spending-overlay"].find(
       id => document.getElementById(id)?.classList.contains("open")
     ) || null;
   }
@@ -2249,62 +2268,9 @@
     openWeeklyPanel();
   });
 
-  // ── 뭘 샀을까? ────────────────────────────────────────────────────────────
+  // ── 뭘 샀을까? / 뭘 먹었을까? — 공유 패널 팩토리 ────────────────────────────
 
-  let _purchaseData = null;
-  let _purchaseCategory = null;
-  let _purchaseSort = "time-desc";
   const _PURCHASE_COLORS = ["#0078d4","#16a34a","#ea580c","#7c3aed","#be185d","#0891b2","#92400e"];
-
-  function _purchaseDefaultDates() {
-    const end = new Date();
-    const start = new Date();
-    start.setDate(start.getDate() - 6);
-    return { start: start.toISOString().slice(0, 10), end: end.toISOString().slice(0, 10) };
-  }
-
-  async function openPurchasePanel() {
-    _pushAndClose("purchase-overlay");
-    document.getElementById("purchase-overlay").classList.add("open");
-    const content = document.getElementById("purchase-content");
-    const startInput = document.getElementById("purchase-start-date");
-    const endInput   = document.getElementById("purchase-end-date");
-
-    if (!startInput.value || !endInput.value) {
-      const { start, end } = _purchaseDefaultDates();
-      startInput.value = start;
-      endInput.value   = end;
-    }
-
-    const startDate = startInput.value;
-    const endDate   = endInput.value;
-
-    content.innerHTML = '<p class="week-empty">🤖 AI가 분석 중…</p>';
-    document.getElementById("purchase-title").textContent = "🛒 뭘 샀을까?";
-
-    _purchaseCategory = null;
-    _purchaseSort = "time-desc";
-    _purchaseData = null;
-
-    try {
-      const resp = await fetch("/grocery/analyze-purchases", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ start_date: startDate, end_date: endDate }),
-      });
-      _purchaseData = await resp.json();
-    } catch (e) {
-      content.innerHTML = '<p class="week-empty">분석 중 오류가 발생했습니다.</p>';
-      return;
-    }
-
-    if (!_purchaseData.items || _purchaseData.items.length === 0) {
-      content.innerHTML = '<p class="week-empty">해당 기간에 구매 내역이 없어요.</p>';
-      return;
-    }
-
-    _renderPurchasePanel();
-  }
 
   function _buildDonutSvg(categories, totalAmt) {
     const R = 50, CX = 70, CY = 70, STROKE = 20;
@@ -2326,137 +2292,201 @@
     </svg>`;
   }
 
-  function _getFilteredItems() {
-    if (!_purchaseData) return [];
-    let items = _purchaseData.items;
-    if (_purchaseCategory) {
-      const cat = _purchaseData.categories.find(c => c.name === _purchaseCategory);
-      const names = new Set(cat ? cat.item_names : []);
-      items = items.filter(i => names.has(i.raw_name));
-    }
-    const sorted = [...items];
-    if (_purchaseSort === "time-asc")    sorted.sort((a, b) => (a.purchase_date || "").localeCompare(b.purchase_date || ""));
-    if (_purchaseSort === "time-desc")   sorted.sort((a, b) => (b.purchase_date || "").localeCompare(a.purchase_date || ""));
-    if (_purchaseSort === "amount-desc") sorted.sort((a, b) => (b.amount || 0) - (a.amount || 0));
-    return sorted;
-  }
+  function _createPurchaseLikePanel(opts) {
+    // opts: overlayId, titleId, contentId, startId, endId, endpoint, title, aiLabel, emptyMsg, defaultDays
+    const st = { data: null, category: null, sort: "time-desc" };
 
-  function _renderPurchaseItemList(content) {
-    const items = _getFilteredItems();
-    const existing = content.querySelectorAll(".purchase-items-header, .purchase-item-card");
-    existing.forEach(el => el.remove());
-
-    const header = document.createElement("div");
-    header.className = "purchase-items-header";
-    const catLabel = _purchaseCategory ? `${_purchaseCategory} · ` : "";
-    header.textContent = `${catLabel}${items.length}건`;
-    content.appendChild(header);
-
-    items.forEach(item => {
-      const card = document.createElement("div");
-      card.className = "purchase-item-card";
-      const dateStr = item.purchase_date ? item.purchase_date.slice(5).replace("-", "/") : "";
-      card.innerHTML = `
-        <div class="purchase-item-left">
-          <div class="purchase-item-name">${item.raw_name}</div>
-          <div class="purchase-item-meta">${item.merchant || ""} · ${dateStr}</div>
-        </div>
-        <div class="purchase-item-amount">${(item.amount || 0).toLocaleString("ko-KR")}원</div>`;
-      content.appendChild(card);
-    });
-  }
-
-  function _renderPurchasePanel() {
-    const content = document.getElementById("purchase-content");
-    content.innerHTML = "";
-
-    // 총 금액 배너
-    const totalAmt = (_purchaseData.items || []).reduce((s, i) => s + (i.amount || 0), 0);
-    const banner = document.createElement("div");
-    banner.className = "purchase-total-banner";
-    banner.innerHTML = `<span>총 지출</span><strong>${totalAmt.toLocaleString("ko-KR")}원</strong>`;
-    content.appendChild(banner);
-
-    // AI 요약
-    if (_purchaseData.summary) {
-      const aiBox = document.createElement("div");
-      aiBox.className = "purchase-ai-box";
-      aiBox.innerHTML = DOMPurify.sanitize(
-        `<strong>구매 분석</strong><br>${_purchaseData.summary.replace(/\\n|\n/g, "<br>")}`
-      );
-      content.appendChild(aiBox);
+    function defaultDates() {
+      const end = new Date();
+      const start = new Date();
+      start.setDate(start.getDate() - (opts.defaultDays - 1));
+      return { start: start.toISOString().slice(0, 10), end: end.toISOString().slice(0, 10) };
     }
 
-    // 정렬 바
-    const sortBar = document.createElement("div");
-    sortBar.className = "purchase-sort-bar";
-    [["time-desc","시간역순"],["time-asc","시간순"],["amount-desc","고액순"]].forEach(([key, label]) => {
-      const btn = document.createElement("button");
-      btn.className = "purchase-sort-btn" + (key === _purchaseSort ? " active" : "");
-      btn.textContent = label;
-      btn.addEventListener("click", () => {
-        _purchaseSort = key;
-        sortBar.querySelectorAll(".purchase-sort-btn").forEach(b => b.classList.toggle("active", b === btn));
-        _renderPurchaseItemList(content);
+    function getFilteredItems() {
+      if (!st.data) return [];
+      let items = st.data.items;
+      if (st.category) {
+        const cat = st.data.categories.find(c => c.name === st.category);
+        const names = new Set(cat ? cat.item_names : []);
+        items = items.filter(i => names.has(i.raw_name));
+      }
+      const sorted = [...items];
+      if (st.sort === "time-asc")    sorted.sort((a, b) => (a.purchase_date || "").localeCompare(b.purchase_date || ""));
+      if (st.sort === "time-desc")   sorted.sort((a, b) => (b.purchase_date || "").localeCompare(a.purchase_date || ""));
+      if (st.sort === "amount-desc") sorted.sort((a, b) => (b.amount || 0) - (a.amount || 0));
+      return sorted;
+    }
+
+    function renderItemList(content) {
+      const items = getFilteredItems();
+      content.querySelectorAll(".purchase-items-header, .purchase-item-card").forEach(el => el.remove());
+
+      const header = document.createElement("div");
+      header.className = "purchase-items-header";
+      const catLabel = st.category ? `${st.category} · ` : "";
+      header.textContent = `${catLabel}${items.length}건`;
+      content.appendChild(header);
+
+      items.forEach(item => {
+        const card = document.createElement("div");
+        card.className = "purchase-item-card";
+        const dateStr = item.purchase_date ? item.purchase_date.slice(5).replace("-", "/") : "";
+        card.innerHTML = `
+          <div class="purchase-item-left">
+            <div class="purchase-item-name">${item.raw_name}</div>
+            <div class="purchase-item-meta">${item.merchant || ""} · ${dateStr}</div>
+          </div>
+          <div class="purchase-item-amount">${(item.amount || 0).toLocaleString("ko-KR")}원</div>`;
+        content.appendChild(card);
       });
-      sortBar.appendChild(btn);
-    });
-    content.appendChild(sortBar);
+    }
 
-    // 도넛 + 범례
-    const cats = _purchaseData.categories || [];
-    if (cats.length > 0) {
-      const totalAmt = cats.reduce((s, c) => s + c.amount, 0);
-      const donutWrap = document.createElement("div");
-      donutWrap.className = "purchase-donut-wrap";
+    function render() {
+      const content = document.getElementById(opts.contentId);
+      content.innerHTML = "";
 
-      const svgEl = document.createElement("div");
-      svgEl.innerHTML = _buildDonutSvg(cats, totalAmt);
-      const svg = svgEl.firstElementChild;
+      // 총 금액 배너
+      const totalAmt = (st.data.items || []).reduce((s, i) => s + (i.amount || 0), 0);
+      const banner = document.createElement("div");
+      banner.className = "purchase-total-banner";
+      banner.innerHTML = `<span>총 지출</span><strong>${totalAmt.toLocaleString("ko-KR")}원</strong>`;
+      content.appendChild(banner);
 
-      const legend = document.createElement("div");
-      legend.className = "purchase-legend";
+      // AI 요약
+      if (st.data.summary) {
+        const aiBox = document.createElement("div");
+        aiBox.className = "purchase-ai-box";
+        aiBox.innerHTML = DOMPurify.sanitize(
+          `<strong>${opts.aiLabel}</strong><br>${st.data.summary.replace(/\\n|\n/g, "<br>")}`
+        );
+        content.appendChild(aiBox);
+      }
 
-      const updateCatSelection = (selectedCat) => {
-        _purchaseCategory = selectedCat;
-        legend.querySelectorAll(".purchase-legend-item").forEach(el => {
-          el.classList.toggle("active", el.dataset.cat === selectedCat);
+      // 정렬 바
+      const sortBar = document.createElement("div");
+      sortBar.className = "purchase-sort-bar";
+      [["time-desc","시간역순"],["time-asc","시간순"],["amount-desc","고액순"]].forEach(([key, label]) => {
+        const btn = document.createElement("button");
+        btn.className = "purchase-sort-btn" + (key === st.sort ? " active" : "");
+        btn.textContent = label;
+        btn.addEventListener("click", () => {
+          st.sort = key;
+          sortBar.querySelectorAll(".purchase-sort-btn").forEach(b => b.classList.toggle("active", b === btn));
+          renderItemList(content);
         });
+        sortBar.appendChild(btn);
+      });
+      content.appendChild(sortBar);
+
+      // 도넛 + 범례
+      const cats = st.data.categories || [];
+      if (cats.length > 0) {
+        const totalCatAmt = cats.reduce((s, c) => s + c.amount, 0);
+        const donutWrap = document.createElement("div");
+        donutWrap.className = "purchase-donut-wrap";
+
+        const svgEl = document.createElement("div");
+        svgEl.innerHTML = _buildDonutSvg(cats, totalCatAmt);
+        const svg = svgEl.firstElementChild;
+
+        const legend = document.createElement("div");
+        legend.className = "purchase-legend";
+
+        const updateCatSelection = (selectedCat) => {
+          st.category = selectedCat;
+          legend.querySelectorAll(".purchase-legend-item").forEach(el => {
+            el.classList.toggle("active", el.dataset.cat === selectedCat);
+          });
+          svg.querySelectorAll(".donut-seg").forEach(seg => {
+            seg.style.opacity = (selectedCat && seg.dataset.cat !== selectedCat) ? "0.35" : "1";
+          });
+          renderItemList(content);
+        };
+
+        cats.forEach((cat, i) => {
+          const pct = totalCatAmt > 0 ? Math.round(cat.amount / totalCatAmt * 100) : 0;
+          const item = document.createElement("div");
+          item.className = "purchase-legend-item" + (cat.name === st.category ? " active" : "");
+          item.dataset.cat = cat.name;
+          item.innerHTML = `<span class="purchase-legend-dot" style="background:${_PURCHASE_COLORS[i % _PURCHASE_COLORS.length]}"></span>
+            <span class="purchase-legend-name">${cat.name}</span>
+            <span class="purchase-legend-pct">${pct}%</span>
+            <span class="purchase-legend-amt">${cat.amount.toLocaleString("ko-KR")}원</span>`;
+          item.addEventListener("click", () => {
+            updateCatSelection(st.category === cat.name ? null : cat.name);
+          });
+          legend.appendChild(item);
+        });
+
         svg.querySelectorAll(".donut-seg").forEach(seg => {
-          seg.style.opacity = (selectedCat && seg.dataset.cat !== selectedCat) ? "0.35" : "1";
+          seg.addEventListener("click", () => {
+            const name = seg.dataset.cat;
+            updateCatSelection(st.category === name ? null : name);
+          });
         });
-        _renderPurchaseItemList(content);
-      };
 
-      cats.forEach((cat, i) => {
-        const pct = totalAmt > 0 ? Math.round(cat.amount / totalAmt * 100) : 0;
-        const item = document.createElement("div");
-        item.className = "purchase-legend-item" + (cat.name === _purchaseCategory ? " active" : "");
-        item.dataset.cat = cat.name;
-        item.innerHTML = `<span class="purchase-legend-dot" style="background:${_PURCHASE_COLORS[i % _PURCHASE_COLORS.length]}"></span>
-          <span class="purchase-legend-name">${cat.name}</span>
-          <span class="purchase-legend-pct">${pct}%</span>
-          <span class="purchase-legend-amt">${cat.amount.toLocaleString("ko-KR")}원</span>`;
-        item.addEventListener("click", () => {
-          updateCatSelection(_purchaseCategory === cat.name ? null : cat.name);
-        });
-        legend.appendChild(item);
-      });
+        donutWrap.appendChild(svg);
+        donutWrap.appendChild(legend);
+        content.appendChild(donutWrap);
+      }
 
-      svg.querySelectorAll(".donut-seg").forEach(seg => {
-        seg.addEventListener("click", () => {
-          const name = seg.dataset.cat;
-          updateCatSelection(_purchaseCategory === name ? null : name);
-        });
-      });
-
-      donutWrap.appendChild(svg);
-      donutWrap.appendChild(legend);
-      content.appendChild(donutWrap);
+      renderItemList(content);
     }
 
-    _renderPurchaseItemList(content);
+    async function open() {
+      _pushAndClose(opts.overlayId);
+      document.getElementById(opts.overlayId).classList.add("open");
+      const content = document.getElementById(opts.contentId);
+      const startInput = document.getElementById(opts.startId);
+      const endInput   = document.getElementById(opts.endId);
+
+      if (!startInput.value || !endInput.value) {
+        const { start, end } = defaultDates();
+        startInput.value = start;
+        endInput.value   = end;
+      }
+
+      const startDate = startInput.value;
+      const endDate   = endInput.value;
+
+      content.innerHTML = '<p class="week-empty">🤖 AI가 분석 중…</p>';
+      document.getElementById(opts.titleId).textContent = opts.title;
+
+      st.category = null;
+      st.sort = "time-desc";
+      st.data = null;
+
+      try {
+        const resp = await fetch(opts.endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ start_date: startDate, end_date: endDate }),
+        });
+        st.data = await resp.json();
+      } catch (e) {
+        content.innerHTML = '<p class="week-empty">분석 중 오류가 발생했습니다.</p>';
+        return;
+      }
+
+      if (!st.data.items || st.data.items.length === 0) {
+        content.innerHTML = `<p class="week-empty">${opts.emptyMsg}</p>`;
+        return;
+      }
+
+      render();
+    }
+
+    return { open };
   }
+
+  const _purchasePanel = _createPurchaseLikePanel({
+    overlayId: "purchase-overlay", titleId: "purchase-title", contentId: "purchase-content",
+    startId: "purchase-start-date", endId: "purchase-end-date",
+    endpoint: "/grocery/analyze-purchases", title: "🛒 뭘 샀을까?", aiLabel: "구매 분석",
+    emptyMsg: "해당 기간에 구매 내역이 없어요.", defaultDays: 7,
+  });
+  function openPurchasePanel() { return _purchasePanel.open(); }
 
   document.getElementById("purchase-btn").addEventListener("click", () => {
     document.getElementById("hamburger-menu").classList.remove("open");
@@ -2465,6 +2495,24 @@
   document.getElementById("purchase-back-btn").addEventListener("click", _goBack);
   document.getElementById("purchase-hamburger-btn").addEventListener("click", toggleHamburger);
   document.getElementById("purchase-apply-btn").addEventListener("click", openPurchasePanel);
+
+  // ── 뭘 먹었을까? ──────────────────────────────────────────────────────────
+
+  const _eatenPanel = _createPurchaseLikePanel({
+    overlayId: "eaten-overlay", titleId: "eaten-title", contentId: "eaten-content",
+    startId: "eaten-start-date", endId: "eaten-end-date",
+    endpoint: "/grocery/analyze-eaten", title: "🍽️ 뭘 먹었을까?", aiLabel: "식생활 분석",
+    emptyMsg: "해당 기간에 식료품・외식 내역이 없어요.", defaultDays: 7,
+  });
+  function openEatenPanel() { return _eatenPanel.open(); }
+
+  document.getElementById("eaten-btn").addEventListener("click", () => {
+    document.getElementById("hamburger-menu").classList.remove("open");
+    openEatenPanel();
+  });
+  document.getElementById("eaten-back-btn").addEventListener("click", _goBack);
+  document.getElementById("eaten-hamburger-btn").addEventListener("click", toggleHamburger);
+  document.getElementById("eaten-apply-btn").addEventListener("click", openEatenPanel);
 
   document.getElementById("spending-btn").addEventListener("click", () => {
     document.getElementById("hamburger-menu").classList.remove("open");
