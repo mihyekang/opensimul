@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>데이터 관리</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,
+                   "Apple SD Gothic Neo", "Segoe UI", "Noto Sans KR", sans-serif;
+      background: #efece5;
+      min-height: 100dvh;
+      display: flex; flex-direction: column; align-items: center;
+      padding: 24px 16px 48px;
+    }
+    h1 { font-size: 1.1rem; font-weight: 600; color: #26221c; margin-bottom: 4px; }
+    .subtitle { font-size: 0.78rem; color: #8d8474; margin-bottom: 20px; }
+
+    .grocery-topbar {
+      width: 100%; max-width: 600px;
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 20px;
+    }
+    #user-bar-code { font-size: 0.8rem; color: #5d5548; }
+
+    #g-hamburger-btn {
+      background: none; border: none; cursor: pointer;
+      font-size: 1.2rem; padding: 4px 8px; border-radius: 2px; color: #3a332b;
+    }
+    #g-hamburger-btn:hover { background: #ece7db; }
+    #g-hamburger-menu {
+      display: none; position: fixed; top: 40px; left: 12px;
+      background: #faf8f3; border: 1px solid #ddd6c8; border-radius: 3px;
+      box-shadow: 0 4px 16px rgba(38,34,28,0.12); padding: 6px 0;
+      z-index: 1000; min-width: 140px;
+    }
+    #g-hamburger-menu.open { display: block; }
+    .g-hmenu-item {
+      display: block; padding: 10px 18px; width: 100%;
+      font-size: 0.88rem; color: #3a332b; text-decoration: none;
+      background: none; border: none; border-bottom: 1px solid #f0ebe0;
+      text-align: left; cursor: pointer; font-family: inherit;
+    }
+    .g-hmenu-item:last-child { border-bottom: none; }
+    .g-hmenu-item:hover { background: #efece5; }
+
+    .card {
+      width: 100%; max-width: 600px;
+      background: #faf8f3; border-radius: 4px;
+      box-shadow: 0 1px 4px rgba(38,34,28,0.08);
+      padding: 20px; margin-bottom: 20px;
+    }
+    .card-title { font-size: 0.9rem; font-weight: 600; color: #26221c; margin-bottom: 14px; }
+
+    .filter-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+    .filter-row label { font-size: 0.75rem; color: #8d8474; white-space: nowrap; }
+    .filter-input {
+      flex: 1; min-width: 100px; padding: 8px 10px;
+      border: 1px solid #cfc7b6; border-radius: 3px;
+      font-size: 0.85rem; color: #26221c;
+    }
+    .filter-input:focus { outline: none; border-color: #b3402e; }
+    .date-sep { font-size: 0.8rem; color: #a89f8f; }
+
+    .btn-danger {
+      padding: 9px 18px; background: #b3402e; color: #faf8f3;
+      border: none; border-radius: 3px; font-size: 0.85rem;
+      font-weight: 500; cursor: pointer; white-space: nowrap;
+    }
+    .btn-danger:hover { background: #8f3222; }
+    .btn-outline {
+      padding: 8px 14px; background: #ece7db; color: #5d5548;
+      border: none; border-radius: 3px; font-size: 0.82rem;
+      cursor: pointer; white-space: nowrap;
+    }
+    .btn-outline:hover { background: #ddd6c8; }
+
+    #preview-result {
+      margin-top: 10px; padding: 10px 14px;
+      background: #f5e7e2; border-radius: 3px;
+      font-size: 0.83rem; color: #2b5d73; display: none;
+    }
+    #preview-result.warn { background: #f7f0dc; color: #a6511f; }
+
+    .section-actions {
+      display: flex; gap: 8px; align-items: center;
+      justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap;
+    }
+    .merchant-select {
+      flex: 1; min-width: 120px; max-width: 200px;
+      padding: 8px 10px; border: 1px solid #cfc7b6; border-radius: 3px;
+      font-size: 0.85rem; color: #26221c; background: #faf8f3;
+    }
+    .merchant-select:focus { outline: none; border-color: #b3402e; }
+
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      background: #efece5; font-size: 0.75rem; color: #8d8474;
+      font-weight: 600; padding: 9px 12px; text-align: left;
+      border-bottom: 1px solid #ddd6c8;
+    }
+    td { padding: 11px 12px; border-bottom: 1px solid #ece7db; font-size: 0.85rem; vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #f3efe6; }
+    .merchant-cell { font-weight: 500; color: #26221c; }
+    .amt-cell { font-weight: 600; color: #26221c; white-space: nowrap; }
+    .date-cell { font-size: 0.78rem; color: #a89f8f; white-space: nowrap; }
+    .action-cell { text-align: right; }
+    .action-stack { display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
+    .btn-restore {
+      border: none; border-radius: 2px; cursor: pointer;
+      font-size: 0.78rem; padding: 4px 10px;
+      background: #e7e9df; color: #2b5d73;
+    }
+    .btn-restore:hover { background: #dce0d3; }
+    .btn-perm-del {
+      border: none; border-radius: 2px; cursor: pointer;
+      font-size: 0.78rem; padding: 4px 10px;
+      background: #f5e7e2; color: #b3402e;
+    }
+    .btn-perm-del:hover { background: #eed6cd; }
+
+    .empty-msg { text-align: center; padding: 32px 16px; color: #a89f8f; font-size: 0.88rem; }
+
+    #auth-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(38,34,28,0.5); z-index: 1100;
+      align-items: center; justify-content: center;
+    }
+    #auth-overlay.visible { display: flex; }
+    #auth-modal {
+      background: #faf8f3; border-radius: 4px; padding: 28px 24px;
+      width: 320px; max-width: 92vw; box-shadow: 0 8px 32px rgba(38,34,28,0.18);
+    }
+    .auth-title { font-size: 1.05rem; font-weight: 600; text-align: center; margin-bottom: 16px; }
+    .auth-tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+    .auth-tab {
+      flex: 1; padding: 8px; border: 1px solid #cfc7b6; border-radius: 3px;
+      background: #f3efe6; color: #5d5548; cursor: pointer; font-size: 0.85rem;
+    }
+    .auth-tab.active { background: #b3402e; color: #faf8f3; border-color: #b3402e; }
+    .auth-field {
+      display: block; width: 100%; padding: 10px 12px; margin-bottom: 10px;
+      border: 1px solid #cfc7b6; border-radius: 3px; font-size: 0.88rem;
+    }
+    .auth-field:focus { outline: none; border-color: #b3402e; }
+    #auth-submit-btn {
+      width: 100%; padding: 11px; background: #b3402e; color: #faf8f3;
+      border: none; border-radius: 3px; font-size: 0.9rem; cursor: pointer; font-weight: 500;
+    }
+    #auth-submit-btn:hover:not(:disabled) { background: #9a3527; }
+    #auth-submit-btn:disabled { background: #d9b0a6; cursor: not-allowed; }
+    #auth-error-msg { font-size: 0.78rem; color: #b3402e; text-align: center; margin-top: 8px; min-height: 18px; }
+    .auth-hint { font-size: 0.75rem; color: #a89f8f; text-align: center; margin-top: 14px; }
+  </style>
+</head>
+<body>
+
+<div id="g-hamburger-menu">
+  <a href="/chat" class="g-hmenu-item">대화하기</a>
+  <a href="/grocery" class="g-hmenu-item">영수증 분석기</a>
+  <a href="/pantry" class="g-hmenu-item">재고 관리</a>
+  <a href="/trash" class="g-hmenu-item">데이터 관리</a>
+  <hr style="margin:4px 0;border:none;border-top:1px solid #e5dfd1">
+  <a href="/chat?panel=history" class="g-hmenu-item">영수증 이력</a>
+  <a href="/chat?panel=weekly" class="g-hmenu-item">주간 지출 분석</a>
+  <hr style="margin:4px 0;border:none;border-top:1px solid #e5dfd1">
+  <button id="ghm-logout-btn" class="g-hmenu-item" style="color:#b3402e;">로그아웃</button>
+</div>
+
+<div class="grocery-topbar">
+  <button id="g-hamburger-btn" title="메뉴">☰</button>
+  <span id="user-bar-code"></span>
+</div>
+
+<h1>데이터 관리</h1>
+<p class="subtitle">날짜·마트 기준으로 영수증을 휴지통으로 이동하거나 복원합니다</p>
+
+<!-- 이동 카드 -->
+<div class="card">
+  <p class="card-title">휴지통으로 이동</p>
+  <div class="filter-row">
+    <label>기간</label>
+    <input type="date" id="move-start" class="filter-input" />
+    <span class="date-sep">~</span>
+    <input type="date" id="move-end" class="filter-input" />
+  </div>
+  <div class="filter-row">
+    <label>마트</label>
+    <input type="text" id="move-merchant" class="filter-input" placeholder="비워두면 전체" />
+    <button class="btn-outline" id="preview-btn">미리보기</button>
+    <button class="btn-danger" id="move-btn">이동</button>
+  </div>
+  <div id="preview-result"></div>
+</div>
+
+<!-- 휴지통 카드 -->
+<div class="card">
+  <div class="section-actions">
+    <p class="card-title" style="margin-bottom:0">휴지통</p>
+    <div style="display:flex;gap:8px;align-items:center">
+      <select id="trash-merchant-filter" class="merchant-select">
+        <option value="">전체 마트</option>
+      </select>
+      <button class="btn-danger" id="empty-btn">전체 영구삭제</button>
+    </div>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>날짜</th>
+        <th>마트</th>
+        <th>금액</th>
+        <th>품목</th>
+        <th>삭제일</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="trash-body"></tbody>
+  </table>
+  <div class="empty-msg" id="trash-empty" style="display:none">휴지통이 비어 있습니다.</div>
+</div>
+
+<div id="auth-overlay">
+  <div id="auth-modal">
+    <p class="auth-title">데이터 관리</p>
+    <div class="auth-tabs">
+      <button id="tab-login" class="auth-tab active">로그인</button>
+      <button id="tab-register" class="auth-tab">회원가입</button>
+    </div>
+    <input id="auth-code-input" class="auth-field" type="text" placeholder="사용자 코드 (예: family01)" maxlength="30" autocomplete="username" />
+    <input id="auth-pass-input" class="auth-field" type="password" placeholder="비밀번호" maxlength="100" autocomplete="current-password" />
+    <button id="auth-submit-btn">로그인</button>
+    <p id="auth-error-msg"></p>
+    <p class="auth-hint">코드는 가족끼리 공유할 수 있어요 🏠</p>
+  </div>
+</div>
+
+<script src="/static/native.js"></script>
+<script src="/static/common.js"></script>
+<script>
+  (function() {
+    const today = new Date().toISOString().slice(0, 10);
+    const ago30 = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+    document.getElementById("move-start").value = ago30;
+    document.getElementById("move-end").value   = today;
+  })();
+
+  function fmt(str) { return str ? str.slice(0, 10) : "-"; }
+  function fmtAmt(n) { return n != null ? Number(n).toLocaleString("ko-KR") + "원" : "-"; }
+  function esc(s) {
+    return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  document.getElementById("preview-btn").addEventListener("click", async () => {
+    const s = document.getElementById("move-start").value;
+    const e = document.getElementById("move-end").value;
+    const m = document.getElementById("move-merchant").value.trim();
+    if (!s || !e) { alert("기간을 입력하세요."); return; }
+    const params = new URLSearchParams({ start_date: s, end_date: e, merchant: m });
+    const res = await fetch(`/trash/preview?${params}`);
+    const data = await res.json();
+    const el = document.getElementById("preview-result");
+    el.style.display = "block";
+    if (data.count === 0) {
+      el.className = "warn"; el.textContent = "해당 조건의 영수증이 없습니다.";
+    } else {
+      el.className = "";
+      const mList = data.merchants.length ? ` (${data.merchants.join(", ")})` : "";
+      el.textContent = `${data.count}건, 합계 ${fmtAmt(data.total_spent)}${mList} → 휴지통으로 이동됩니다.`;
+    }
+  });
+
+  document.getElementById("move-btn").addEventListener("click", async () => {
+    const s = document.getElementById("move-start").value;
+    const e = document.getElementById("move-end").value;
+    const m = document.getElementById("move-merchant").value.trim();
+    if (!s || !e) { alert("기간을 입력하세요."); return; }
+    if (!confirm(`${s} ~ ${e}${m ? " [" + m + "]" : ""} 영수증을 휴지통으로 이동할까요?`)) return;
+    const res = await fetch("/trash/move", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ start_date: s, end_date: e, merchant: m }),
+    });
+    const data = await res.json();
+    document.getElementById("preview-result").style.display = "none";
+    alert(`${data.moved}건이 휴지통으로 이동됐습니다.`);
+    loadTrash();
+  });
+
+  document.getElementById("empty-btn").addEventListener("click", async () => {
+    const m = document.getElementById("trash-merchant-filter").value;
+    const label = m ? `[${m}] ` : "";
+    if (!confirm(`${label}휴지통의 모든 항목을 영구삭제할까요? 복원이 불가능합니다.`)) return;
+    const params = new URLSearchParams({ merchant: m });
+    await fetch(`/trash/items?${params}`, { method: "DELETE" });
+    loadTrash();
+  });
+
+  document.getElementById("trash-merchant-filter").addEventListener("change", loadTrash);
+
+  async function loadTrash() {
+    if (!USER_ID) return;
+    await loadMerchants();
+    const m = document.getElementById("trash-merchant-filter").value;
+    const params = new URLSearchParams({ merchant: m });
+    const res = await fetch(`/trash/items?${params}`);
+    const items = await res.json();
+    renderTrash(items);
+  }
+
+  async function loadMerchants() {
+    const res = await fetch(`/trash/merchants`);
+    const merchants = await res.json();
+    const sel = document.getElementById("trash-merchant-filter");
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">전체 마트</option>';
+    for (const m of merchants) {
+      const opt = document.createElement("option");
+      opt.value = m; opt.textContent = m;
+      if (m === cur) opt.selected = true;
+      sel.appendChild(opt);
+    }
+  }
+
+  function renderTrash(items) {
+    const tbody = document.getElementById("trash-body");
+    const empty = document.getElementById("trash-empty");
+    tbody.innerHTML = "";
+    if (!items.length) { empty.style.display = ""; return; }
+    empty.style.display = "none";
+    for (const item of items) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td class="date-cell">${esc(fmt(item.purchase_date))}</td>
+        <td class="merchant-cell">${esc(item.merchant || "-")}</td>
+        <td class="amt-cell">${fmtAmt(item.total)}</td>
+        <td class="date-cell">${item.item_count ?? "-"}개</td>
+        <td class="date-cell">${esc(fmt(item.deleted_at))}</td>
+        <td class="action-cell">
+          <div class="action-stack">
+            <button class="btn-restore" data-id="${item.id}">복원</button>
+            <button class="btn-perm-del" data-id="${item.id}">영구삭제</button>
+          </div>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    }
+    tbody.querySelectorAll(".btn-restore").forEach(b => b.addEventListener("click", () => restoreItem(+b.dataset.id)));
+    tbody.querySelectorAll(".btn-perm-del").forEach(b => b.addEventListener("click", () => permDelete(+b.dataset.id)));
+  }
+
+  async function restoreItem(id) {
+    if (!confirm("이 영수증을 복원할까요?")) return;
+    const res = await fetch(`/trash/restore/${id}`, { method: "POST" });
+    const data = await res.json();
+    if (data.ok) loadTrash(); else alert("복원에 실패했습니다.");
+  }
+
+  async function permDelete(id) {
+    if (!confirm("영구삭제할까요? 복원이 불가능합니다.")) return;
+    await fetch(`/trash/items/${id}`, { method: "DELETE" });
+    loadTrash();
+  }
+
+  function init() { loadTrash(); }
+  initCommonUI({ onLogin: init });
+</script>
+</body>
+</html>

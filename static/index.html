@@ -1,0 +1,3194 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>영수증 분석</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* ── 리시트 페이퍼 테마 ──
+       감열지 배경 #efece5 · 종이 카드 #faf8f3 · 잉크 #26221c
+       도장 레드 #b3402e · 테두리 #ddd6c8 · 점선 #cfc7b6 */
+
+    body {
+      font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,
+                   "Apple SD Gothic Neo", "Segoe UI", "Noto Sans KR", sans-serif;
+      background: #efece5;
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      overflow-x: hidden;
+    }
+
+    header {
+      width: 100%;
+      background: #26221c;
+      border-bottom: none;
+      padding: max(12px, env(safe-area-inset-top)) 20px 12px;
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+    }
+    header h1 { font-size: 1rem; font-weight: 700; color: #f5f2ec; text-align: center; letter-spacing: 0.06em; }
+    .header-left  { display: flex; align-items: center; }
+    .header-right { display: flex; justify-content: flex-end; align-items: center; }
+    #header-user-code { font-size: 0.75rem; color: #b7ae9f; }
+
+    /* ── hamburger button ── */
+    #hamburger-btn {
+      background: none;
+      border: none;
+      font-size: 1.3rem;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 3px;
+      color: #d8d2c5;
+      line-height: 1;
+    }
+    #hamburger-btn:hover { background: rgba(245,242,236,.12); }
+
+    /* ── hamburger dropdown ── */
+    #hamburger-menu {
+      display: none;
+      position: fixed;
+      top: 54px; left: 12px;
+      min-width: 196px;
+      max-width: calc(100vw - 24px);
+      background: #faf8f3;
+      border: 1px solid #ddd6c8;
+      border-radius: 4px;
+      box-shadow: 0 4px 20px rgba(38,34,28,.13);
+      z-index: 1000;
+      overflow-y: auto;
+      max-height: calc(100svh - 70px);
+    }
+    #hamburger-menu.open { display: block; }
+    .hmenu-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      padding: 13px 16px;
+      text-align: left;
+      background: none;
+      border: none;
+      border-bottom: 1px solid #f0ebe0;
+      font-size: 0.88rem;
+      color: #2b2620;
+      cursor: pointer;
+      text-decoration: none;
+      font-family: inherit;
+      transition: background 0.12s;
+    }
+    .hmenu-item:last-child { border-bottom: none; }
+    .hmenu-item:hover { background: #f3efe6; }
+    .hmenu-user {
+      padding: 10px 16px 8px;
+      font-size: 0.78rem;
+      color: #8d8474;
+      border-bottom: 1px solid #f0ebe0;
+    }
+
+    /* ── usage panel ── */
+    #usage-panel {
+      display: none;
+      position: fixed;
+      top: 54px; left: 12px;
+      width: min(300px, calc(100vw - 24px));
+      background: #faf8f3;
+      border: 1px solid #cfc7b6;
+      border-radius: 4px;
+      box-shadow: 0 4px 16px rgba(38,34,28,.12);
+      z-index: 200;
+      padding: 14px 16px;
+    }
+    #usage-panel.open { display: block; }
+    #usage-panel h3 { font-size: 0.85rem; margin-bottom: 10px; color: #3a332b; }
+    .usage-row {
+      font-size: 0.78rem;
+      color: #5d5548;
+      padding: 5px 0;
+      border-bottom: 1px solid #f0ebe0;
+    }
+    .usage-row:last-child { border-bottom: none; }
+
+
+
+
+    /* ── receipt report card ── */
+    .receipt-report-block {
+      align-self: stretch;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 0 2px;
+    }
+    .receipt-report-label {
+      font-size: 0.76rem;
+      color: #a89f8f;
+      text-align: center;
+      letter-spacing: 0.04em;
+    }
+    .receipt-report-card {
+      background: #faf8f3;
+      border: 1px solid #ddd6c8;
+      border-radius: 4px;
+      overflow: hidden;
+      box-shadow: 1px 2px 0 rgba(38,34,28,.08);
+    }
+    .rrc-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 14px 10px;
+      background: #f3efe6;
+      border-bottom: 1px solid #ece7db;
+    }
+    .rrc-merchant { font-size: 0.95rem; font-weight: 700; color: #26221c; }
+    .rrc-date { font-size: 0.75rem; color: #8d8474; }
+    .rrc-items { padding: 8px 14px; }
+    .rrc-item {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.82rem;
+      padding: 4px 0;
+      color: #4d443a;
+      border-bottom: 1px solid #f0ebe0;
+    }
+    .rrc-item:last-child { border-bottom: none; }
+    .rrc-item.discount { color: #b3402e; }
+    .rrc-item.more { color: #a89f8f; font-size: 0.78rem; }
+    .rrc-sub-header {
+      font-size: 0.76rem;
+      font-weight: 600;
+      color: #8d8474;
+      padding: 8px 14px 2px;
+      letter-spacing: 0.02em;
+      border-top: 1px solid #ece7db;
+    }
+    .rrc-sub-header:first-of-type { border-top: none; }
+    .rrc-subtotal {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 14px 8px;
+      font-size: 0.8rem;
+      color: #5d5548;
+      background: #f3efe6;
+    }
+    .rrc-total {
+      display: flex;
+      justify-content: space-between;
+      padding: 10px 14px;
+      background: #f3efe6;
+      border-top: 1px solid #ece7db;
+      font-weight: 700;
+      font-size: 0.88rem;
+    }
+
+    /* ── receipt delete block ── */
+    .receipt-delete-block {
+      align-self: stretch;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 0 2px;
+    }
+    .receipt-delete-label {
+      font-size: 0.76rem;
+      color: #a89f8f;
+      text-align: center;
+      letter-spacing: 0.04em;
+    }
+    .receipt-delete-card {
+      background: #faf8f3;
+      border: 1px solid #ddd6c8;
+      border-radius: 4px;
+      padding: 11px 14px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 1px 2px 0 rgba(38,34,28,.08);
+      transition: opacity 0.3s;
+    }
+    .receipt-delete-card.deleted { opacity: 0.35; background: #f3efe6; }
+    .rdc-id {
+      font-size: 0.76rem;
+      color: #b7ae9f;
+      font-weight: 600;
+      min-width: 34px;
+      text-align: center;
+    }
+    .rdc-info { flex: 1; min-width: 0; }
+    .rdc-merchant { font-size: 0.88rem; font-weight: 700; color: #26221c; }
+    .rdc-meta { font-size: 0.78rem; color: #8d8474; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .rdc-del-btn {
+      padding: 6px 11px;
+      background: #f5e7e2;
+      color: #b3402e;
+      border: 1px solid #d8a99c;
+      border-radius: 3px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+      flex-shrink: 0;
+      font-family: inherit;
+    }
+    .rdc-del-btn:hover:not(:disabled) { background: #eed6cd; }
+    .rdc-del-btn:disabled { background: #ece7db; color: #b7ae9f; border-color: #ddd6c8; cursor: default; }
+
+    /* ── overlay hamburger button (visible inside full-screen overlays) ── */
+    .overlay-hamburger-btn {
+      background: none;
+      border: none;
+      font-size: 1.1rem;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 3px;
+      color: #d8d2c5;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    .overlay-hamburger-btn:hover { background: rgba(245,242,236,.12); }
+    .overlay-back-btn {
+      background: none; border: none; font-size: 1.5rem; font-weight: 300;
+      cursor: pointer; padding: 2px 8px 2px 2px; border-radius: 3px;
+      color: #d8d2c5; line-height: 1; flex-shrink: 0;
+    }
+    .overlay-back-btn:hover { background: rgba(245,242,236,.12); }
+
+    /* ── receipt history overlay ── */
+    #history-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: #efece5;
+      z-index: 500;
+      flex-direction: column;
+    }
+    #history-overlay.open { display: flex; }
+    .history-header {
+      background: #26221c;
+      border-bottom: none;
+      padding: max(12px, env(safe-area-inset-top)) 16px 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .history-title { flex: 1; font-size: 1rem; font-weight: 700; color: #f5f2ec; letter-spacing: 0.04em; }
+    .history-add-btn {
+      padding: 7px 12px;
+      background: #b3402e;
+      color: #faf8f3;
+      border: none;
+      border-radius: 3px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+    }
+    .history-add-btn:hover { background: #9a3527; }
+    .history-del-toggle {
+      padding: 7px 10px;
+      background: none;
+      border: 1px solid rgba(245,242,236,.4);
+      border-radius: 3px;
+      font-size: 0.8rem;
+      color: #d8d2c5;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .history-del-toggle.active { background: #f5e7e2; border-color: #d8a99c; color: #b3402e; }
+    .history-del-confirm {
+      display: none;
+      padding: 7px 12px;
+      background: #b3402e;
+      color: #faf8f3;
+      border: none;
+      border-radius: 3px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .history-del-confirm.visible { display: block; }
+    .history-sel-all {
+      display: none;
+      padding: 7px 10px;
+      background: none;
+      border: 1px solid rgba(245,242,236,.4);
+      border-radius: 3px;
+      font-size: 0.8rem;
+      color: #d8d2c5;
+      cursor: pointer;
+      font-family: inherit;
+      white-space: nowrap;
+    }
+    .history-sel-all.visible { display: block; }
+    .history-sel-all.all-selected { background: #f5e7e2; border-color: #d8a99c; color: #b3402e; }
+    .history-close-btn {
+      background: none;
+      border: none;
+      font-size: 1.2rem;
+      cursor: pointer;
+      color: #6f6759;
+      padding: 4px 8px;
+      border-radius: 2px;
+    }
+    .history-close-btn:hover { background: #ece7db; }
+    .history-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px 16px 32px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-width: 800px;
+      width: 100%;
+      align-self: center;
+    }
+    .history-empty { text-align: center; padding: 60px 20px; color: #a89f8f; font-size: 0.88rem; line-height: 1.8; }
+    .hrc {
+      background: #faf8f3;
+      border: 1.5px solid #ddd6c8;
+      border-radius: 4px;
+      overflow: hidden;
+      box-shadow: 1px 2px 0 rgba(38,34,28,.08);
+      transition: border-color 0.15s;
+      flex-shrink: 0;   /* prevent flex compression when list overflows */
+    }
+    .hrc.checked { border-color: #b3402e; background: #f5e7e2; }
+    .hrc-row {
+      display: flex;
+      align-items: flex-start;
+      padding: 12px 14px;
+      gap: 10px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .hrc-row:hover { background: #f3efe6; }
+    .hrc.checked .hrc-row { background: transparent; }
+    .hrc-check {
+      display: none;
+      width: 20px;
+      height: 20px;
+      border-radius: 2px;
+      border: 2px solid #b7ae9f;
+      flex-shrink: 0;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.76rem;
+      color: transparent;
+      transition: all 0.15s;
+    }
+    .delete-mode .hrc-check { display: flex; }
+    .hrc.checked .hrc-check { background: #b3402e; border-color: #b3402e; color: #faf8f3; }
+    .hrc-icon { font-size: 1.2rem; flex-shrink: 0; padding-top: 1px; }
+    .hrc-body { flex: 1; min-width: 0; }
+    .hrc-merchant {
+      font-size: 0.9rem; font-weight: 700; color: #26221c; word-break: keep-all;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .hrc-merchant.mc-expanded {
+      display: block;
+      -webkit-line-clamp: unset;
+      overflow: visible;
+    }
+    .hrc-merchant-toggle {
+      display: none;
+      margin-top: 2px;
+      font-size: 0.76rem; font-weight: 600; color: #b3402e;
+      background: none; border: none; padding: 0; cursor: pointer; font-family: inherit;
+    }
+    .hrc-merchant-toggle.visible { display: inline-block; }
+    .hrc-meta { font-size: 0.78rem; color: #8d8474; margin-top: 3px; }
+    .hrc-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
+    .hrc-amount { font-size: 0.88rem; font-weight: 700; color: #26221c; white-space: nowrap; }
+    .hrc-expand { font-size: 0.78rem; color: #b7ae9f; transition: transform 0.2s; line-height: 1; }
+    .hrc.expanded .hrc-expand { transform: rotate(180deg); }
+    .hrc-detail {
+      max-height: 0;
+      overflow: hidden;
+      background: #f3efe6;
+      transition: max-height 0.35s ease;
+    }
+    .hrc.expanded .hrc-detail {
+      max-height: 1500px;
+      overflow-y: auto;
+      border-top: 1px solid #ece7db;
+      padding: 10px 14px 14px;
+    }
+    .hrc-items-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+    .hrc-items-table td { padding: 5px 4px; border-bottom: 1px solid #ece7db; color: #3a332b; }
+    .hrc-items-table td:last-child { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .hrc-items-table tr:last-child td { border-bottom: none; }
+    .hrc-items-table tr.cancelled td { color: #b7ae9f; text-decoration: line-through; }
+    .hrc-items-table tr.discount td { color: #b3402e; }
+    .hrc-total-row {
+      display: flex;
+      justify-content: space-between;
+      padding-top: 8px;
+      margin-top: 4px;
+      border-top: 1px solid #ddd6c8;
+      font-weight: 700;
+      font-size: 0.85rem;
+    }
+
+    /* ── chat area ── */
+    #chat-wrap {
+      width: 100%;
+      max-width: 800px;
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .bubble-row {
+      display: flex;
+      flex-direction: column;
+      max-width: 78%;
+    }
+    .bubble-row.user      { align-self: flex-end;   align-items: flex-end; }
+    .bubble-row.assistant { align-self: flex-start; align-items: flex-start; }
+
+    .bubble {
+      padding: 10px 14px;
+      border-radius: 3px;
+      font-size: 0.9rem;
+      line-height: 1.6;
+      word-break: break-word;
+    }
+    .user .bubble {
+      background: #26221c;
+      color: #f5f2ec;
+      white-space: pre-wrap;
+      box-shadow: 1px 2px 0 rgba(38,34,28,.15);
+    }
+    .assistant .bubble {
+      background: #faf8f3;
+      color: #26221c;
+      border: 1px solid #ddd6c8;
+      box-shadow: 1px 2px 0 rgba(38,34,28,.08);
+    }
+    .assistant .bubble.streaming { white-space: pre-wrap; }
+    .tool-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.82em;
+      color: #6f6759;
+      font-style: italic;
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    /* image in user bubble */
+    .bubble-img {
+      max-width: 240px;
+      max-height: 240px;
+      border-radius: 3px;
+      display: block;
+      margin-bottom: 6px;
+      object-fit: cover;
+    }
+
+    /* ── markdown styles ── */
+    .assistant .bubble h1,
+    .assistant .bubble h2,
+    .assistant .bubble h3,
+    .assistant .bubble h4 {
+      margin: 0.9em 0 0.4em;
+      font-weight: 600;
+      line-height: 1.3;
+    }
+    .assistant .bubble h1 { font-size: 1.25em; }
+    .assistant .bubble h2 { font-size: 1.1em; }
+    .assistant .bubble h3 { font-size: 1em; }
+    .assistant .bubble p { margin: 0.5em 0; }
+    .assistant .bubble p:first-child { margin-top: 0; }
+    .assistant .bubble p:last-child  { margin-bottom: 0; }
+    .assistant .bubble ul,
+    .assistant .bubble ol { margin: 0.5em 0 0.5em 1.4em; }
+    .assistant .bubble li { margin: 0.2em 0; }
+    .assistant .bubble blockquote {
+      border-left: 3px solid #b3402e;
+      margin: 0.6em 0;
+      padding: 4px 12px;
+      color: #5d5548;
+      background: #f3efe6;
+      border-radius: 0 2px 2px 0;
+    }
+    .assistant .bubble a { color: #b3402e; text-decoration: underline; }
+    .assistant .bubble code {
+      background: #ece7db;
+      border: 1px solid #ddd6c8;
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 0.85em;
+    }
+    .assistant .bubble pre {
+      margin: 0.6em 0;
+      border-radius: 3px;
+      overflow: hidden;
+      border: 1px solid #ddd6c8;
+    }
+    .assistant .bubble pre code {
+      display: block;
+      padding: 12px 14px;
+      overflow-x: auto;
+      background: #f3efe6;
+      border: none;
+      border-radius: 0;
+      font-size: 0.83em;
+      line-height: 1.55;
+    }
+    .assistant .bubble table {
+      border-collapse: collapse;
+      margin: 0.6em 0;
+      font-size: 0.85em;
+      width: 100%;
+    }
+    .assistant .bubble th,
+    .assistant .bubble td {
+      border: 1px solid #ddd6c8;
+      padding: 6px 10px;
+      text-align: left;
+    }
+    .assistant .bubble th { background: #ece7db; font-weight: 600; }
+    .assistant .bubble tr:nth-child(even) td { background: #f3efe6; }
+    .assistant .bubble hr {
+      border: none;
+      border-top: 1px solid #ddd6c8;
+      margin: 0.8em 0;
+    }
+
+    /* ── cursor ── */
+    .typing-cursor::after {
+      content: "▋";
+      animation: blink 0.7s step-end infinite;
+    }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    .usage-tag {
+      font-size: 0.78rem;
+      color: #9b9283;
+      margin-top: 4px;
+      padding: 0 4px;
+    }
+
+    /* ── footer / input ── */
+    footer {
+      width: 100%;
+      max-width: 800px;
+      padding: 8px 16px 20px;
+    }
+
+    /* image preview strip above input */
+    #img-preview-wrap {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+      padding: 6px 10px;
+      background: #faf8f3;
+      border: 1px solid #cfc7b6;
+      border-radius: 3px;
+    }
+    #img-preview-wrap.visible { display: flex; }
+    #img-preview {
+      width: 56px;
+      height: 56px;
+      object-fit: cover;
+      border-radius: 2px;
+      border: 1px solid #ddd6c8;
+    }
+    #img-preview-name {
+      flex: 1;
+      font-size: 0.78rem;
+      color: #5d5548;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+    #img-remove-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 1rem;
+      color: #9b9283;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    #img-remove-btn:hover { background: #ece7db; color: #3a332b; }
+
+    .input-row {
+      display: flex;
+      gap: 8px;
+      background: #faf8f3;
+      border: 1px solid #cfc7b6;
+      border-radius: 4px;
+      padding: 8px 8px 8px 14px;
+      box-shadow: 1px 2px 0 rgba(38,34,28,.08);
+    }
+
+    textarea {
+      flex: 1;
+      border: none;
+      outline: none;
+      resize: none;
+      font-size: 0.9rem;
+      font-family: inherit;
+      line-height: 1.5;
+      max-height: 160px;
+      overflow-y: auto;
+      background: transparent;
+    }
+
+    #img-btn {
+      align-self: flex-end;
+      padding: 7px 10px;
+      background: none;
+      border: 1px solid #cfc7b6;
+      border-radius: 3px;
+      font-size: 1.1rem;
+      cursor: pointer;
+      color: #5d5548;
+      transition: background 0.15s;
+      line-height: 1;
+    }
+    #img-btn:hover { background: #ece7db; }
+
+    #send-btn {
+      align-self: flex-end;
+      padding: 7px 16px;
+      background: #b3402e;
+      color: #faf8f3;
+      border: none;
+      border-radius: 3px;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    #send-btn:hover:not(:disabled) { background: #9a3527; }
+    #send-btn:disabled { background: #d9b0a6; cursor: not-allowed; }
+
+    /* DB 저장 뱃지 */
+    .saved-badge {
+      font-size: 0.76rem;
+      color: #b3402e;
+      margin-top: 2px;
+      padding: 0 4px;
+    }
+
+    /* filter bar */
+    .history-filter-bar {
+      background: #faf8f3;
+      border-bottom: 2px dashed #cfc7b6;
+      padding: 10px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .history-filter-row {
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+    }
+    .history-filter-chips {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      overflow: hidden;
+      min-width: 0;
+      flex: 1;
+      transition: max-height 0.15s ease;
+    }
+    .history-filter-toggle {
+      display: none;
+      flex-shrink: 0;
+      white-space: nowrap;
+      font-size: 0.78rem; font-weight: 600; color: #b3402e;
+      background: none; border: none; padding: 0; cursor: pointer; font-family: inherit;
+    }
+    .history-filter-toggle.visible { display: inline-block; }
+    .hfc {
+      padding: 5px 12px;
+      border-radius: 3px;
+      border: 1.5px solid #ddd6c8;
+      background: #faf8f3;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: #5d5548;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.12s;
+      font-family: inherit;
+    }
+    .hfc.active { border-color: #b3402e; background: #f5e7e2; color: #b3402e; }
+    .history-filter-stat {
+      font-size: 0.78rem;
+      color: #8d8474;
+      padding: 2px 4px;
+    }
+    .history-filter-stat strong { color: #26221c; }
+
+    /* weekly overlay */
+    #weekly-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: #efece5;
+      z-index: 500;
+      flex-direction: column;
+    }
+    #weekly-overlay.open { display: flex; }
+    .weekly-header {
+      background: #26221c;
+      border-bottom: none;
+      padding: max(12px, env(safe-area-inset-top)) 16px 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .weekly-title { flex: 1; font-size: 1rem; font-weight: 700; color: #f5f2ec; letter-spacing: 0.04em; }
+    .weekly-export-btn {
+      padding: 5px 11px;
+      background: #ece7db;
+      color: #3a332b;
+      border: 1.5px solid #cfc7b6;
+      border-radius: 3px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      white-space: nowrap;
+      transition: all 0.12s;
+    }
+    .weekly-export-btn:hover { background: #ddd6c8; border-color: #9b9283; }
+    .weekly-ai-box { padding:13px 16px; background:#faf8f3; border-radius: 3px; border-left:3px solid #b3402e; font-size:0.82rem; color:#3a332b; line-height:1.65; flex-shrink:0; overflow:hidden; }
+    .weekly-ai-box.weekly-ai-loading { color:#a89f8f; font-style:italic; }
+    .wai-summary { margin:6px 0 12px; font-size:0.82rem; line-height:1.65; color:#3a332b; }
+    .wai-legend-bar { display:flex; gap:14px; margin-bottom:10px; font-size: 0.78rem; color:#5d5548; flex-wrap:wrap; }
+    .wai-legend-dot { width:10px; height:10px; border-radius:2px; display:inline-block; margin-right:4px; vertical-align:middle; }
+    .wai-cat-row { display:grid; grid-template-columns:72px 1fr; gap:4px 8px; align-items:center; margin-bottom:8px; min-width:0; }
+    .wai-cat-label { font-size: 0.76rem; color:#5d5548; text-align:right; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .wai-bars { display:flex; flex-direction:column; gap:3px; min-width:0; overflow:hidden; }
+    .wai-bar-wrap { display:flex; align-items:center; gap:6px; min-width:0; overflow:hidden; }
+    .wai-bar { height:11px; border-radius:2px; min-width:3px; flex-shrink:0; max-width:calc(100% - 78px); }
+    .wai-bar.this-week { background:#b3402e; }
+    .wai-bar.last-week { background:#b5ab99; }
+    .wai-bar-amt { font-size: 0.78rem; color:#7d7466; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:70px; }
+    /* spending overlay */
+    #spending-overlay { display:none; position:fixed; inset:0; z-index:500; background:#efece5; flex-direction:column; }
+    #spending-overlay.open { display:flex; }
+    .spending-tab-bar { display:flex; gap:8px; padding:10px 16px; background:#faf8f3; border-bottom:2px dashed #cfc7b6; flex-shrink:0; }
+    .spending-tab { padding:6px 18px; border-radius: 3px; border:1.5px solid #ddd6c8; background:#faf8f3; font-size:0.82rem; font-weight:600; color:#5d5548; cursor:pointer; font-family:inherit; transition:all 0.12s; }
+    .spending-tab.active { border-color:#b3402e; background:#f5e7e2; color:#b3402e; }
+    .weekly-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      max-width: 600px;
+      width: 100%;
+      align-self: center;
+    }
+    .week-card {
+      background: #faf8f3;
+      border: 1.5px solid #ddd6c8;
+      border-radius: 4px;
+      padding: 16px;
+      box-shadow: 1px 2px 0 rgba(38,34,28,.08);
+    }
+    .week-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 10px;
+    }
+    .week-label { font-size: 0.82rem; color: #8d8474; font-weight: 600; }
+    .week-total { font-size: 1.1rem; font-weight: 800; color: #26221c; }
+    .week-empty { text-align: center; padding: 60px 20px; color: #a89f8f; font-size: 0.88rem; }
+
+    /* weekly date bar */
+    .weekly-date-bar {
+      background: #faf8f3;
+      border-bottom: 2px dashed #cfc7b6;
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .weekly-date-label { font-size: 0.78rem; color: #6f6759; font-weight: 600; white-space: nowrap; }
+    .weekly-date-sep { font-size: 0.82rem; color: #a89f8f; }
+    .weekly-date-bar input[type="date"] {
+      flex: 1;
+      min-width: 0;
+      border: 1px solid #ddd6c8;
+      border-radius: 3px;
+      padding: 5px 8px;
+      font-size: 0.8rem;
+      font-family: inherit;
+      outline: none;
+    }
+    .weekly-date-bar input[type="date"]:focus { border-color: #b3402e; }
+    .weekly-apply-btn {
+      padding: 6px 14px;
+      background: #b3402e;
+      color: #faf8f3;
+      border: none;
+      border-radius: 3px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      white-space: nowrap;
+    }
+    .weekly-apply-btn:hover { background: #9a3527; }
+
+    /* purchase overlay */
+    #purchase-overlay { display:none; position:fixed; inset:0; z-index:500; background:#efece5; flex-direction:column; }
+    #purchase-overlay.open { display:flex; }
+    #eaten-overlay { display:none; position:fixed; inset:0; z-index:500; background:#efece5; flex-direction:column; }
+    #eaten-overlay.open { display:flex; }
+    .purchase-sort-bar { display:flex; gap:6px; padding:8px 16px; background:transparent; border-bottom:2px dashed #cfc7b6; flex-shrink:0; overflow-x:auto; }
+    .purchase-sort-btn { padding:4px 12px; border-radius: 3px; border:1.5px solid #ddd6c8; background:#faf8f3; font-size:0.75rem; font-weight:600; color:#5d5548; cursor:pointer; white-space:nowrap; transition:all 0.12s; }
+    .purchase-sort-btn.active { border-color:#b3402e; background:#f5e7e2; color:#b3402e; }
+    .purchase-total-banner { display:flex; justify-content:space-between; align-items:center; margin:14px 16px 0; padding:13px 16px; background:#26221c; border-radius: 3px; color:#f5f2ec; font-size:0.82rem; letter-spacing:0.08em; box-shadow:1px 2px 0 rgba(38,34,28,.15); }
+    .purchase-total-banner strong { font-size:1.15rem; letter-spacing:0; }
+    .purchase-ai-box { margin:10px 16px 10px; padding:11px 14px; background:#faf8f3; border-radius: 3px; border-left:3px solid #b3402e; font-size:0.82rem; color:#3a332b; line-height:1.65; }
+    .purchase-donut-wrap { display:flex; align-items:center; gap:12px; margin:0 16px 14px; background:#faf8f3; border:1px solid #e7e1d4; border-radius: 3px; padding:12px; }
+    .purchase-donut-wrap svg { width:112px; height:112px; flex-shrink:0; }
+    .purchase-legend { display:flex; flex-direction:column; gap:5px; flex:1; min-width:0; }
+    .purchase-legend-item { display:flex; align-items:center; gap:6px; font-size:0.78rem; cursor:pointer; border-radius: 2px; padding:4px 5px; transition:background 0.1s; }
+    .purchase-legend-item:hover { background:#ece7db; }
+    .purchase-legend-item.active { background:#f5e7e2; }
+    .purchase-legend-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+    .purchase-legend-name { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; color:#2b2620; }
+    .purchase-legend-pct { color:#8d8474; font-size: 0.76rem; white-space:nowrap; }
+    .purchase-legend-amt { color:#b3402e; font-size: 0.76rem; font-weight:700; white-space:nowrap; }
+    .purchase-items-header { padding:4px 16px 6px; font-size: 0.78rem; color:#8d8474; font-weight:600; }
+    .purchase-item-card { background:#faf8f3; border:1px solid #e7e1d4; border-radius: 3px; margin:0 16px 7px; padding:11px 14px; display:flex; justify-content:space-between; align-items:center; gap:10px; }
+    .purchase-item-left { min-width:0; flex:1; }
+    .purchase-item-name { font-size:0.88rem; font-weight:600; color:#26221c; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .purchase-item-meta { font-size: 0.76rem; color:#8d8474; margin-top:2px; }
+    .purchase-item-amount { font-size:0.88rem; font-weight:700; color:#b3402e; white-space:nowrap; }
+
+    /* stacked bar + merchant list */
+    .week-stacked-bar {
+      height: 14px;
+      border-radius: 3px;
+      display: flex;
+      overflow: hidden;
+      margin-bottom: 12px;
+    }
+    .week-stacked-segment { height: 100%; transition: width 0.4s ease; }
+    .week-merchants { display: flex; flex-direction: column; gap: 2px; }
+    .week-merchant-row {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 4px 0;
+      border-bottom: 1px solid #f0ebe0;
+    }
+    .week-merchant-row:last-child { border-bottom: none; }
+    .week-merchant-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .week-merchant-name {
+      flex: 1;
+      color: #3a332b;
+      font-weight: 600;
+      font-size: 0.8rem;
+      cursor: pointer;
+      text-decoration: underline dotted;
+      text-underline-offset: 2px;
+    }
+    .week-merchant-name:hover { color: #b3402e; }
+    .week-merchant-amt { font-size: 0.8rem; color: #5d5548; white-space: nowrap; }
+
+    /* edit buttons */
+    /* ── receipt edit modal ── */
+    .edit-modal { background:#faf8f3; border-radius: 4px; padding:22px; width:min(94vw,500px); box-shadow:0 8px 32px rgba(38,34,28,.18); }
+    .edit-modal-title { font-size:1rem; font-weight:700; color:#26221c; margin-bottom:14px; }
+    .edit-meta-section { display:flex; gap:10px; margin-bottom:14px; }
+    .edit-field { display:flex; flex-direction:column; flex:1; }
+    .edit-label { font-size:0.75rem; color:#5d5548; font-weight:700; margin-bottom:4px; }
+    .edit-input { padding:8px; border:1px solid #ddd6c8; border-radius: 3px; font-size:0.88rem; font-family:inherit; outline:none; }
+    .edit-input:focus { border-color:#b3402e; }
+    .edit-items-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
+    .edit-items-hint { font-size: 0.76rem; color:#a89f8f; }
+    .edit-items-list { display:flex; flex-direction:column; gap:5px; margin-bottom:8px; max-height:300px; overflow-y:auto; }
+    .edit-item-row { display:grid; grid-template-columns:28px 28px 1fr 52px 80px; gap:5px; align-items:center; }
+    .edit-item-add, .edit-item-del {
+      width:26px; height:26px; border-radius:50%; background:none;
+      cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; line-height:1;
+      font-size:1rem; font-weight:700;
+    }
+    .edit-item-add { border:1.5px solid #b8c795; color:#5a7a3a; }
+    .edit-item-add:hover { background:#e9edda; }
+    .edit-item-del { border:1.5px solid #d8a99c; color:#b3402e; }
+    .edit-item-del:hover { background:#f5e7e2; }
+    .edit-item-name, .edit-item-qty, .edit-item-amount {
+      padding:6px 7px; border:1px solid #ddd6c8; border-radius: 2px;
+      font-size:0.82rem; font-family:inherit; outline:none; width:100%;
+    }
+    .edit-item-qty   { text-align:center; }
+    .edit-item-amount { text-align:right; }
+    .edit-item-name:focus, .edit-item-qty:focus, .edit-item-amount:focus { border-color:#b3402e; }
+    .edit-item-row.deleted { opacity:0.35; pointer-events:none; }
+    .edit-add-item-btn {
+      width:100%; padding:8px; border:1.5px dashed #b3402e; border-radius: 3px;
+      background:none; color:#b3402e; font-size:0.82rem; font-weight:600;
+      cursor:pointer; font-family:inherit; margin-bottom:14px;
+    }
+    .edit-add-item-btn:hover { background:#f5e7e2; }
+    .edit-actions { display:flex; gap:8px; }
+    .edit-cancel-btn { flex:1; padding:10px; border:1px solid #ddd6c8; border-radius: 3px; background:#faf8f3; color:#5d5548; font-weight:600; cursor:pointer; font-family:inherit; }
+    .edit-save-btn { flex:2; padding:10px; border:none; border-radius: 3px; background:#b3402e; color:#faf8f3; font-weight:600; cursor:pointer; font-family:inherit; }
+    .edit-save-btn:hover { background:#9a3527; }
+
+    .hrc-del-btn {
+      padding: 4px 10px;
+      background: none;
+      border: 1.5px solid #d8a99c;
+      border-radius: 2px;
+      font-size: 0.76rem;
+      font-weight: 600;
+      color: #b3402e;
+      cursor: pointer;
+      font-family: inherit;
+      white-space: nowrap;
+      transition: all 0.12s;
+    }
+    .hrc-del-btn:hover { background: #f5e7e2; }
+    .hrc-edit-btn {
+      padding: 4px 8px;
+      background: none;
+      border: 1px solid #ddd6c8;
+      border-radius: 2px;
+      font-size: 0.76rem;
+      color: #b3402e;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.12s;
+    }
+    .hrc-edit-btn:hover { background: #f5e7e2; }
+
+    /* ── 리시트 페이퍼: 금액 숫자는 고정폭으로 ── */
+    .hrc-amount, .hrc-total-row, .hrc-items-table td:last-child,
+    .purchase-item-amount, .purchase-total-banner strong, .purchase-legend-amt,
+    .rrc-total, .rrc-subtotal, .rrc-item span:last-child,
+    .week-total, .week-merchant-amt, .wai-bar-amt,
+    .history-filter-stat strong {
+      font-family: "SF Mono", ui-monospace, Menlo, Consolas, "Roboto Mono", monospace;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.01em;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="header-left">
+    <button id="hamburger-btn" title="메뉴">☰</button>
+  </div>
+  <h1>영수증 분석</h1>
+  <div class="header-right"><span id="header-user-code"></span></div>
+</header>
+
+<!-- hamburger dropdown -->
+<div id="hamburger-menu">
+  <a href="/grocery" class="hmenu-item">영수증 분석기</a>
+  <a href="/pantry" class="hmenu-item">재고 관리</a>
+  <a href="/trash" class="hmenu-item">데이터 관리</a>
+  <hr style="margin:4px 0;border:none;border-top:1px solid #e5dfd1">
+  <button id="history-btn" class="hmenu-item">영수증 이력</button>
+  <button id="weekly-btn" class="hmenu-item">주간 지출 분석</button>
+  <button id="purchase-btn" class="hmenu-item">뭘 샀을까?</button>
+  <button id="eaten-btn" class="hmenu-item">뭘 먹었을까?</button>
+  <button id="spending-btn" class="hmenu-item">소비 분석</button>
+  <hr style="margin:4px 0;border:none;border-top:1px solid #e5dfd1">
+  <button id="reset-btn" class="hmenu-item">대화 초기화</button>
+  <button id="usage-btn" class="hmenu-item">사용량 확인</button>
+  <hr style="margin:4px 0;border:none;border-top:1px solid #e5dfd1">
+  <button id="logout-btn" class="hmenu-item" style="color:#b3402e;">로그아웃</button>
+</div>
+
+<!-- usage panel -->
+<div id="usage-panel">
+  <h3>📊 사용량 정보</h3>
+  <div class="usage-row"><span id="deployment-label">—</span></div>
+  <div class="usage-row"><span id="rate-label">—</span></div>
+  <div class="usage-row"><span id="cost-label">누적: —</span></div>
+  <div class="usage-row"><span id="turns-label">—</span></div>
+</div>
+
+
+<div id="chat-wrap"></div>
+
+<footer>
+  <div id="img-preview-wrap">
+    <img id="img-preview" src="" alt="preview" />
+    <span id="img-preview-name"></span>
+    <button id="img-remove-btn" title="이미지 제거">✕</button>
+  </div>
+  <div class="input-row">
+    <textarea id="input" rows="1" placeholder="메시지를 입력하세요…"></textarea>
+    <button id="img-btn" title="이미지 업로드">🖼</button>
+    <button id="send-btn">전송</button>
+  </div>
+  <input type="file" id="file-input" accept="image/*" style="display:none" />
+</footer>
+
+<!-- receipt edit modal -->
+<div id="receipt-edit-overlay" style="display:none;position:fixed;inset:0;background:rgba(38,34,28,.45);z-index:2000;align-items:flex-start;justify-content:center;overflow-y:auto;padding:24px 0;">
+  <div class="edit-modal">
+    <p class="edit-modal-title">영수증 수정</p>
+    <div class="edit-meta-section">
+      <div class="edit-field">
+        <label class="edit-label">업체</label>
+        <input id="edit-merchant" type="text" class="edit-input" placeholder="예: 이마트" />
+      </div>
+      <div class="edit-field">
+        <label class="edit-label">구매일</label>
+        <input id="edit-date" type="date" class="edit-input" />
+      </div>
+    </div>
+    <div class="edit-items-header">
+      <span class="edit-label">구매 항목</span>
+      <span class="edit-items-hint">품목명 · 수량 · 금액</span>
+    </div>
+    <div id="edit-items-list" class="edit-items-list"></div>
+    <button id="edit-add-item" class="edit-add-item-btn">+ 항목 추가</button>
+    <div class="edit-actions">
+      <button id="edit-cancel" class="edit-cancel-btn">취소</button>
+      <button id="edit-save" class="edit-save-btn">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- receipt history overlay -->
+<div id="history-overlay">
+  <div class="history-header">
+    <button id="history-back-btn" class="overlay-back-btn" title="뒤로">‹</button>
+    <button class="overlay-hamburger-btn" id="history-hamburger-btn" title="메뉴">☰</button>
+    <span class="history-title">영수증 이력</span>
+    <a href="/grocery" class="history-add-btn">＋ 추가</a>
+    <button id="history-del-toggle" class="history-del-toggle">🗑 삭제</button>
+    <button id="history-sel-all" class="history-sel-all">전체 선택</button>
+    <button id="history-del-confirm" class="history-del-confirm">선택 삭제 (0)</button>
+  </div>
+  <div class="weekly-date-bar" id="history-date-bar">
+    <span class="weekly-date-label">기간</span>
+    <input type="date" id="history-start-date" />
+    <span class="weekly-date-sep">~</span>
+    <input type="date" id="history-end-date" />
+    <button id="history-apply-btn" class="weekly-apply-btn">조회</button>
+  </div>
+  <div id="history-filter-bar" class="history-filter-bar" style="display:none"></div>
+  <div id="history-list" class="history-list"></div>
+</div>
+
+<!-- weekly overlay -->
+<div id="weekly-overlay">
+  <div class="weekly-header">
+    <button id="weekly-back-btn" class="overlay-back-btn" title="뒤로">‹</button>
+    <button class="overlay-hamburger-btn" id="weekly-hamburger-btn" title="메뉴">☰</button>
+    <span class="weekly-title">주간 지출</span>
+    <button id="weekly-export-html-btn" class="weekly-export-btn" title="HTML 파일로 저장">HTML</button>
+    <button id="weekly-export-pdf-btn" class="weekly-export-btn" title="PDF로 저장 (인쇄)">PDF</button>
+  </div>
+  <div class="weekly-date-bar">
+    <span class="weekly-date-label">기간</span>
+    <input type="date" id="weekly-start-date" />
+    <span class="weekly-date-sep">~</span>
+    <input type="date" id="weekly-end-date" />
+    <button id="weekly-apply-btn" class="weekly-apply-btn">조회</button>
+  </div>
+  <div id="weekly-content" class="weekly-content"></div>
+</div>
+
+<!-- purchase overlay -->
+<div id="purchase-overlay">
+  <div class="weekly-header">
+    <button id="purchase-back-btn" class="overlay-back-btn" title="뒤로">‹</button>
+    <button class="overlay-hamburger-btn" id="purchase-hamburger-btn" title="메뉴">☰</button>
+    <span id="purchase-title" class="weekly-title">🛒 뭘 샀을까?</span>
+  </div>
+  <div class="weekly-date-bar">
+    <span class="weekly-date-label">기간</span>
+    <input type="date" id="purchase-start-date" />
+    <span class="weekly-date-sep">~</span>
+    <input type="date" id="purchase-end-date" />
+    <button id="purchase-apply-btn" class="weekly-apply-btn">조회</button>
+  </div>
+  <div id="purchase-content" class="weekly-content"></div>
+</div>
+
+<div id="eaten-overlay">
+  <div class="weekly-header">
+    <button id="eaten-back-btn" class="overlay-back-btn" title="뒤로">‹</button>
+    <button class="overlay-hamburger-btn" id="eaten-hamburger-btn" title="메뉴">☰</button>
+    <span id="eaten-title" class="weekly-title">🍽️ 뭘 먹었을까?</span>
+  </div>
+  <div class="weekly-date-bar">
+    <span class="weekly-date-label">기간</span>
+    <input type="date" id="eaten-start-date" />
+    <span class="weekly-date-sep">~</span>
+    <input type="date" id="eaten-end-date" />
+    <button id="eaten-apply-btn" class="weekly-apply-btn">조회</button>
+  </div>
+  <div id="eaten-content" class="weekly-content"></div>
+</div>
+
+<!-- spending overlay -->
+<div id="spending-overlay">
+  <div class="weekly-header">
+    <button id="spending-back-btn" class="overlay-back-btn" title="뒤로">‹</button>
+    <button class="overlay-hamburger-btn" id="spending-hamburger-btn" title="메뉴">☰</button>
+    <span class="weekly-title">📊 소비 분석</span>
+  </div>
+  <div class="spending-tab-bar">
+    <button class="spending-tab active" data-mode="weekly">전주 비교</button>
+    <button class="spending-tab" data-mode="monthly">전월 비교</button>
+  </div>
+  <div id="spending-content" class="weekly-content"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
+<script src="/static/native.js"></script>
+<script>
+  // ── auth guard ──
+  const _authCode = localStorage.getItem("grocery_user_code");
+  if (!_authCode) { window.location.replace("/grocery"); }
+  const USER_CODE = _authCode || "";
+
+  // sid 쿠키 유효성 검증 — 없으면 재로그인
+  fetch("/auth/session").then(r => r.json()).then(data => {
+    if (!data.user_id) {
+      localStorage.removeItem("grocery_user_code");
+      window.location.replace("/grocery");
+    } else {
+      initPushNotifications();
+    }
+  }).catch(() => {});
+
+  marked.setOptions({
+    highlight: (code, lang) => {
+      const language = hljs.getLanguage(lang) ? lang : "plaintext";
+      return hljs.highlight(code, { language }).value;
+    },
+    breaks: true,
+    gfm: true,
+  });
+
+  const chatWrap      = document.getElementById("chat-wrap");
+  const inputEl       = document.getElementById("input");
+  const sendBtn       = document.getElementById("send-btn");
+  const imgBtn        = document.getElementById("img-btn");
+  const fileInput     = document.getElementById("file-input");
+  const previewWrap   = document.getElementById("img-preview-wrap");
+  const previewImg    = document.getElementById("img-preview");
+  const previewName   = document.getElementById("img-preview-name");
+  const imgRemoveBtn  = document.getElementById("img-remove-btn");
+  const hamburgerBtn  = document.getElementById("hamburger-btn");
+  const hamburgerMenu = document.getElementById("hamburger-menu");
+  const usagePanel    = document.getElementById("usage-panel");
+  const usageBtn      = document.getElementById("usage-btn");
+
+  let streaming    = false;
+  let pendingImage = null;
+
+  // ── image picker ──
+  imgBtn.addEventListener("click", async () => {
+    if (isNativeApp()) {
+      try {
+        const nativeFile = await captureOrPickImage();
+        if (nativeFile) setPendingImage(nativeFile);
+      } catch {
+        // 사용자가 취소한 경우 등 - 무시
+      }
+      return;
+    }
+    fileInput.click();
+  });
+  fileInput.addEventListener("change", () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+    setPendingImage(file);
+    fileInput.value = "";
+  });
+
+  function setPendingImage(file) {
+    pendingImage = file;
+    previewImg.src = URL.createObjectURL(file);
+    previewName.textContent = file.name;
+    previewWrap.classList.add("visible");
+  }
+  imgRemoveBtn.addEventListener("click", clearImage);
+
+  function clearImage() {
+    pendingImage = null;
+    previewImg.src = "";
+    previewWrap.classList.remove("visible");
+  }
+
+  // ── textarea ──
+  inputEl.addEventListener("input", () => {
+    inputEl.style.height = "auto";
+    inputEl.style.height = inputEl.scrollHeight + "px";
+  });
+  inputEl.addEventListener("keydown", e => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+  });
+
+  sendBtn.addEventListener("click", send);
+
+  // ── session ──
+  function getSessionId() {
+    let sid = localStorage.getItem("chat_session_id");
+    if (!sid) {
+      sid = crypto.randomUUID();
+      localStorage.setItem("chat_session_id", sid);
+    }
+    return sid;
+  }
+  const SESSION_ID = getSessionId();
+  document.getElementById("header-user-code").textContent = USER_CODE;
+
+  // ── info ──
+  async function loadInfo() {
+    try {
+      const d = await fetch(`/info?session_id=${SESSION_ID}`).then(r => r.json());
+      document.getElementById("deployment-label").textContent = `모델: ${d.deployment}`;
+      document.getElementById("rate-label").textContent =
+        `환율: 1 USD = ₩${d.usd_to_krw.toLocaleString("ko-KR", { maximumFractionDigits: 1 })} (${d.rate_date})`;
+      updateCostLabel(d.total_cost_usd, d.total_cost_krw, d.total_tokens);
+      updateTurnsLabel(d.current_turns, d.max_history_turns);
+    } catch (err) {
+      console.error("정보 조회 실패:", err);
+    }
+  }
+
+  function updateCostLabel(usd, krw, tokens) {
+    document.getElementById("cost-label").textContent =
+      `누적: $${usd.toFixed(6)} (₩${krw.toLocaleString("ko-KR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}) · ${tokens} tokens`;
+  }
+
+  function updateTurnsLabel(cur, max) {
+    const el = document.getElementById("turns-label");
+    const pct = max > 0 ? cur / max : 0;
+    const color = pct >= 0.9 ? "#b3402e" : pct >= 0.7 ? "#c07f2a" : "#8d8474";
+    el.innerHTML = `<span style="color:${color}">대화: ${cur}/${max}</span>`;
+  }
+
+  // ── hamburger + panel management ──
+  function closeAllPanels() {
+    hamburgerMenu.classList.remove("open");
+    usagePanel.classList.remove("open");
+  }
+
+  function _closeFullScreenOverlays() {
+    ["history-overlay", "weekly-overlay", "purchase-overlay", "eaten-overlay", "spending-overlay"].forEach(id => {
+      document.getElementById(id)?.classList.remove("open");
+    });
+  }
+
+  const _navStack = [];
+
+  function _getCurrentPanel() {
+    return ["history-overlay", "weekly-overlay", "purchase-overlay", "eaten-overlay", "spending-overlay"].find(
+      id => document.getElementById(id)?.classList.contains("open")
+    ) || null;
+  }
+
+  function _pushAndClose(targetId) {
+    const current = _getCurrentPanel();
+    if (current !== targetId) _navStack.push(current);
+    _closeFullScreenOverlays();
+  }
+
+  function _goBack() {
+    _closeFullScreenOverlays();
+    const prev = _navStack.length > 0 ? _navStack.pop() : null;
+    if (prev) document.getElementById(prev).classList.add("open");
+  }
+
+  function toggleHamburger(e) {
+    e.stopPropagation();
+    const wasOpen = hamburgerMenu.classList.contains("open");
+    closeAllPanels();
+    if (!wasOpen) hamburgerMenu.classList.add("open");
+  }
+
+  hamburgerBtn.addEventListener("click", toggleHamburger);
+  document.getElementById("history-hamburger-btn").addEventListener("click", toggleHamburger);
+  document.getElementById("weekly-hamburger-btn").addEventListener("click", toggleHamburger);
+
+  usageBtn.addEventListener("click", e => {
+    e.stopPropagation();
+    const wasOpen = usagePanel.classList.contains("open");
+    closeAllPanels();
+    if (!wasOpen) { usagePanel.classList.add("open"); loadInfo(); }
+  });
+
+  document.getElementById("reset-btn").addEventListener("click", e => {
+    e.stopPropagation();
+    closeAllPanels();
+    resetChat();
+  });
+
+  document.getElementById("logout-btn").addEventListener("click", async e => {
+    e.stopPropagation();
+    try {
+      await fetch("/auth/logout", { method: "POST" });
+    } catch (err) {
+      console.error("로그아웃 요청 실패(네트워크 오류) — 로컬 로그아웃은 계속 진행:", err);
+    }
+    localStorage.removeItem("grocery_user_code");
+    window.location.href = "/grocery";
+  });
+
+  // history 날짜 바 초기값
+  (function() {
+    const today = new Date().toISOString().slice(0, 10);
+    const ago30 = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+    document.getElementById("history-start-date").value = ago30;
+    document.getElementById("history-end-date").value   = today;
+  })();
+
+  document.getElementById("history-apply-btn").addEventListener("click", () => {
+    const s = document.getElementById("history-start-date").value;
+    const e = document.getElementById("history-end-date").value;
+    if (s && e) openHistoryPanel(null, s, e);
+  });
+
+  document.getElementById("history-btn").addEventListener("click", e => {
+    e.stopPropagation();
+    closeAllPanels();
+    const s = document.getElementById("history-start-date").value;
+    const en = document.getElementById("history-end-date").value;
+    openHistoryPanel(null, s || null, en || null);
+  });
+
+  // 패널 내부 클릭은 전파 차단
+  hamburgerMenu.addEventListener("click", e => e.stopPropagation());
+  usagePanel.addEventListener("click",    e => e.stopPropagation());
+
+  // 외부 클릭 시 모두 닫기
+  document.addEventListener("click", closeAllPanels);
+
+  // ── bubble helpers ──
+  function addBubble(role, text = "") {
+    const row = document.createElement("div");
+    row.className = `bubble-row ${role}`;
+    const bubble = document.createElement("div");
+    bubble.className = "bubble";
+    if (role === "user" && text) bubble.textContent = text;
+    row.appendChild(bubble);
+    chatWrap.appendChild(row);
+    chatWrap.scrollTop = chatWrap.scrollHeight;
+    return { row, bubble };
+  }
+
+  function renderMarkdown(bubble, raw) {
+    bubble.classList.remove("streaming", "typing-cursor");
+    bubble.innerHTML = DOMPurify.sanitize(marked.parse(raw));
+    bubble.querySelectorAll("pre code:not(.hljs)").forEach(el => hljs.highlightElement(el));
+  }
+
+  function appendUsageTag(row, u) {
+    const tag = document.createElement("div");
+    tag.className = "usage-tag";
+    tag.textContent =
+      `${u.prompt_tokens} in / ${u.completion_tokens} out · ` +
+      `$${u.turn_cost_usd.toFixed(6)} (₩${u.turn_cost_krw.toLocaleString("ko-KR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`;
+    row.appendChild(tag);
+    if (u.total_cost_usd !== undefined) {
+      updateCostLabel(u.total_cost_usd, u.total_cost_krw, u.total_tokens);
+    }
+    // turns 카운터 갱신
+    fetch("/info").then(r => r.json()).then(d => updateTurnsLabel(d.current_turns, d.max_history_turns)).catch(err => console.error("턴 수 갱신 실패:", err));
+  }
+
+  // ── send dispatcher ──
+  const RECEIPT_DELETE_RE = new RegExp(
+    "잘못\\s*(올렸|저장|업로드)" +
+    "|중복.*올렸|올렸.*중복|중복.*저장|중복.*됐|중복이야" +
+    "|삭제\\s*(하고|할|하려|해줘|해|하|해달|하자|할게|할래)" +
+    "|(영수증|구매).*(삭제|지우|없애)" +
+    "|(삭제|지우|없애).*(영수증|구매)"
+  );
+
+  const RECEIPT_RENDER_RE = new RegExp(
+    "렌더링|시각화" +
+    "|카드\\s*(뉴스|이미지|형태|로\\s*(보여|만들|정리|해))" +
+    "|이미지로\\s*(보여|만들)" +
+    "|예쁘게\\s*(보여|정리|만들|요약|표현|해)" +
+    "|보기좋게|이쁘게" +
+    "|카드로?\\s*(보여|만들|정리|요약)" +
+    "|(영수증|구매)\\s*.*(보여|정리|카드|요약|시각)"
+  );
+
+  const SESSION_RECEIPT_SUMMARY_RE = new RegExp(
+    "(현재|지금|오늘|세션|이번).*(저장|등록|가져온|올린).*(영수증|내역|구매)" +
+    "|(저장|등록|가져온|올린).*(영수증|내역).*(알려|보여|요약)" +
+    "|현재까지.*영수증|영수증.*내역.*알려줘"
+  );
+
+  async function showSessionReceiptSummary(msg) {
+    const receipts = _getSessionReceipts();
+    const { row: uRow, bubble: uBubble } = addBubble("user");
+    uBubble.textContent = msg;
+    inputEl.value = "";
+
+    if (receipts.length === 0) {
+      const { bubble: aBubble } = addBubble("assistant");
+      aBubble.textContent = "이 세션에서 저장된 영수증이 없어요. 영수증 분석기에서 영수증을 업로드하면 여기서 확인할 수 있어요.";
+      return;
+    }
+
+    renderReceiptsIntoChat(receipts);
+
+    const _summary = receipts.map(r => {
+      const items = (r.items||[]).filter(i=>!i.is_cancelled && i.amount != null && i.amount > 0);
+      const totalLine = r.total ? ` (합계 ${r.total.toLocaleString("ko-KR")}원)` : "";
+      return `[${r.merchant||"알 수 없음"} · ${r.purchase_date||"날짜 미상"}] ${items.length}건${totalLine}`;
+    }).join("\n");
+
+    const totalAmt = receipts.reduce((s, r) => s + (r.total || 0), 0);
+    const prompt = `[이 세션에서 저장한 영수증 ${receipts.length}건]\n${_summary}\n합계: ${totalAmt.toLocaleString("ko-KR")}원\n\n간단히 요약해줘.`;
+    await sendText(prompt);
+  }
+
+  async function send() {
+    if (streaming) return;
+    if (pendingImage) {
+      await sendImage();
+    } else {
+      const msg = inputEl.value.trim();
+      if (!msg) return;
+      if (RECEIPT_DELETE_RE.test(msg)) {
+        await showReceiptDeleteUI(msg);
+      } else if (SESSION_RECEIPT_SUMMARY_RE.test(msg)) {
+        await showSessionReceiptSummary(msg);
+      } else if (RECEIPT_RENDER_RE.test(msg)) {
+        await showReceiptCards(msg);
+      } else {
+        await sendText(msg);
+      }
+    }
+  }
+
+  // ── text chat ──
+  async function sendText(msg) {
+    streaming = true;
+    sendBtn.disabled = true;
+    inputEl.value = "";
+    inputEl.style.height = "auto";
+
+    addBubble("user", msg);
+    const { row: aRow, bubble: aBubble } = addBubble("assistant");
+    aBubble.classList.add("streaming", "typing-cursor");
+
+    try {
+      await sendStreaming(msg, aRow, aBubble);
+    } catch {
+      aBubble.textContent = "";
+      try {
+        await sendFallback(msg, aRow, aBubble);
+      } catch (err) {
+        aBubble.classList.remove("streaming", "typing-cursor");
+        aBubble.textContent = `오류: ${err.message}`;
+      }
+    }
+
+    aBubble.classList.remove("streaming", "typing-cursor");
+    streaming = false;
+    sendBtn.disabled = false;
+    inputEl.focus();
+  }
+
+  async function sendStreaming(msg, aRow, aBubble) {
+    const resp = await fetch("/chat/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: msg, session_id: SESSION_ID }),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "", rawText = "";
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split("\n");
+      buf = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        const payload = JSON.parse(line.slice(6));
+        if (payload.tool_call !== undefined) {
+          const toolNames = {
+            query_spending_by_period: "기간별 지출 조회",
+            query_spending_by_merchant: "업체별 지출 조회",
+            search_items: "품목 검색",
+            get_spending_summary: "지출 요약 집계",
+          };
+          const label = toolNames[payload.tool_call] || payload.tool_call;
+          aBubble.innerHTML = `<span class="tool-status">🔍 ${label} 중...</span>`;
+          rawText = "";
+        }
+        if (payload.token !== undefined) {
+          rawText += payload.token;
+          aBubble.textContent = rawText;
+          chatWrap.scrollTop = chatWrap.scrollHeight;
+        }
+        if (payload.done) {
+          renderMarkdown(aBubble, rawText);
+          chatWrap.scrollTop = chatWrap.scrollHeight;
+          appendUsageTag(aRow, payload.usage);
+        }
+      }
+    }
+    renderMarkdown(aBubble, rawText);
+  }
+
+  async function sendFallback(msg, aRow, aBubble) {
+    const resp = await fetch("/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: msg, session_id: SESSION_ID }),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+    renderMarkdown(aBubble, data.reply);
+    chatWrap.scrollTop = chatWrap.scrollHeight;
+    appendUsageTag(aRow, data.usage);
+  }
+
+  // ── image analysis ──
+  async function sendImage() {
+    const file = pendingImage;
+    const prompt = inputEl.value.trim() || "이 이미지를 자세히 분석해주세요.";
+
+    streaming = true;
+    sendBtn.disabled = true;
+    inputEl.value = "";
+    inputEl.style.height = "auto";
+    clearImage();
+
+    // user bubble: 이미지 썸네일 + 프롬프트
+    const { row: uRow, bubble: uBubble } = addBubble("user");
+    const thumb = document.createElement("img");
+    thumb.src = URL.createObjectURL(file);
+    thumb.className = "bubble-img";
+    uBubble.appendChild(thumb);
+    if (prompt !== "이 이미지를 자세히 분석해주세요.") {
+      const txt = document.createElement("div");
+      txt.textContent = prompt;
+      uBubble.appendChild(txt);
+    }
+
+    // assistant bubble: 분석 결과
+    const { row: aRow, bubble: aBubble } = addBubble("assistant");
+    aBubble.classList.add("streaming", "typing-cursor");
+    aBubble.textContent = "이미지 분석 중…";
+
+    try {
+      const formData = new FormData();
+      formData.append("image", file);
+      formData.append("prompt", prompt);
+      formData.append("session_id", SESSION_ID);
+
+      const resp = await fetch("/analyze", { method: "POST", body: formData });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+
+      renderMarkdown(aBubble, data.analysis);
+      chatWrap.scrollTop = chatWrap.scrollHeight;
+      appendUsageTag(aRow, data.usage);
+
+      if (data.saved_id) {
+        const badge = document.createElement("div");
+        badge.className = "saved-badge";
+        badge.textContent = `✓ DB 저장 완료 (id: ${data.saved_id})`;
+        aRow.appendChild(badge);
+      }
+    } catch (err) {
+      aBubble.classList.remove("streaming", "typing-cursor");
+      aBubble.textContent = `오류: ${err.message}`;
+    }
+
+    streaming = false;
+    sendBtn.disabled = false;
+    inputEl.focus();
+  }
+
+  // ── reset ──
+  async function resetChat() {
+    if (!confirm("대화 기록을 초기화할까요?")) return;
+    try {
+      await fetch("/reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: SESSION_ID }),
+      });
+    } catch (err) {
+      alert("초기화 요청에 실패했습니다. 네트워크 상태를 확인해주세요.");
+      return;
+    }
+    chatWrap.innerHTML = "";
+    clearImage();
+    await loadInfo();
+  }
+
+  // ── receipt card helpers (모듈 스코프, grocery_saved + showReceiptCards 공유) ──
+  function _rcptFmt(n) {
+    if (n == null) return "—";
+    const s = Math.abs(n).toLocaleString("ko-KR") + "원";
+    return n < 0 ? "−" + s : s;
+  }
+  function _rcptEsc(s) {
+    return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  }
+  function _groupByMerchant(receipts) {
+    const map = {}, order = [];
+    receipts.forEach(r => {
+      const key = r.merchant || "알 수 없음";
+      if (!map[key]) { map[key] = []; order.push(key); }
+      map[key].push(r);
+    });
+    return order.map(k => ({ merchant: k, receipts: map[k] }));
+  }
+  function _buildMerchantCard(merchant, receipts) {
+    const MAX = 5;
+    const multiVisit = receipts.length > 1;
+    const grandTotal = receipts.reduce((sum, r) => sum + (r.total || 0), 0);
+
+    const card = document.createElement("div");
+    card.className = "receipt-report-card";
+    const headerDate = multiVisit
+      ? `${receipts.length}회 방문`
+      : (receipts[0].purchase_date || "날짜 미상") + (receipts[0]._date_inferred ? " *" : "");
+    card.innerHTML = `<div class="rrc-header">
+        <span class="rrc-merchant">🏪 ${_rcptEsc(merchant)}</span>
+        <span class="rrc-date">${_rcptEsc(headerDate)}</span>
+      </div>`;
+
+    receipts.forEach((r, idx) => {
+      const allItems  = r.items || [];
+      const purchase  = allItems.filter(i => !i.is_cancelled && i.amount != null && i.amount > 0);
+      const discounts = allItems.filter(i => !i.is_cancelled && i.amount != null && i.amount < 0);
+      const discTotal = discounts.reduce((s,i) => s+i.amount, 0);
+      const visitTotal = r.total != null ? r.total
+        : allItems.filter(i => !i.is_cancelled && i.amount != null).reduce((s,i) => s+i.amount, 0);
+
+      if (multiVisit) {
+        const sh = document.createElement("div");
+        sh.className = "rrc-sub-header";
+        sh.textContent = (r.purchase_date || `방문 ${idx+1}`) + (r._date_inferred ? " *" : "");
+        card.appendChild(sh);
+      }
+      const itemsDiv = document.createElement("div");
+      itemsDiv.className = "rrc-items";
+      purchase.slice(0, MAX).forEach(i => {
+        const row = document.createElement("div");
+        row.className = "rrc-item";
+        row.innerHTML = `<span>${_rcptEsc(i.raw_name)}</span><span>${_rcptFmt(i.amount)}</span>`;
+        itemsDiv.appendChild(row);
+      });
+      if (purchase.length > MAX) {
+        const more = document.createElement("div");
+        more.className = "rrc-item more";
+        more.innerHTML = `<span>외 ${purchase.length - MAX}개 품목</span><span></span>`;
+        itemsDiv.appendChild(more);
+      }
+      if (discTotal < 0) {
+        const disc = document.createElement("div");
+        disc.className = "rrc-item discount";
+        disc.innerHTML = `<span>↳ 할인</span><span>${_rcptFmt(discTotal)}</span>`;
+        itemsDiv.appendChild(disc);
+      }
+      card.appendChild(itemsDiv);
+      if (multiVisit) {
+        const st = document.createElement("div");
+        st.className = "rrc-subtotal";
+        st.innerHTML = `<span>소계</span><span>${_rcptFmt(visitTotal)}</span>`;
+        card.appendChild(st);
+      }
+    });
+
+    const tot = document.createElement("div");
+    tot.className = "rrc-total";
+    tot.innerHTML = `<span>${multiVisit ? "총합계" : "합계"}</span><span>${_rcptFmt(grandTotal)}</span>`;
+    card.appendChild(tot);
+    return card;
+  }
+  function renderReceiptsIntoChat(receipts, label) {
+    const groups = _groupByMerchant(receipts);
+    const block = document.createElement("div");
+    block.className = "receipt-report-block";
+    const lbl = document.createElement("p");
+    lbl.className = "receipt-report-label";
+    lbl.textContent = label || (groups.length < receipts.length
+      ? `🧾 저장된 영수증 ${receipts.length}장 · ${groups.length}개 업체`
+      : `🧾 저장된 영수증 ${receipts.length}장`);
+    block.appendChild(lbl);
+    groups.forEach(g => block.appendChild(_buildMerchantCard(g.merchant, g.receipts)));
+    chatWrap.appendChild(block);
+    chatWrap.scrollTop = chatWrap.scrollHeight;
+  }
+
+  // ── receipt delete UI ──
+  async function showReceiptDeleteUI(msg) {
+    streaming = true;
+    sendBtn.disabled = true;
+    inputEl.value = "";
+    inputEl.style.height = "auto";
+    addBubble("user", msg);
+    try {
+      const rows = await fetch(`/grocery/history?days=365`).then(r => r.json());
+      if (!rows || rows.length === 0) {
+        const { bubble } = addBubble("assistant");
+        bubble.textContent = "삭제할 영수증이 없어요. 영수증 분석기에서 먼저 영수증을 저장해보세요 🧾";
+      } else {
+        chatWrap.appendChild(buildDeleteBlock(rows));
+        chatWrap.scrollTop = chatWrap.scrollHeight;
+        const { bubble } = addBubble("assistant");
+        bubble.textContent = `${rows.length}개 영수증이 있어요. 삭제하려는 항목의 🗑 버튼을 눌러주세요.`;
+      }
+    } catch (err) {
+      const { bubble } = addBubble("assistant");
+      bubble.textContent = `영수증을 불러오지 못했어요: ${err.message}`;
+    }
+    streaming = false;
+    sendBtn.disabled = false;
+    inputEl.focus();
+  }
+
+  function buildDeleteBlock(rows) {
+    const block = document.createElement("div");
+    block.className = "receipt-delete-block";
+    const lbl = document.createElement("p");
+    lbl.className = "receipt-delete-label";
+    lbl.textContent = `🗑 영수증 목록 · ${rows.length}개`;
+    block.appendChild(lbl);
+
+    rows.forEach(r => {
+      const card = document.createElement("div");
+      card.className = "receipt-delete-card";
+
+      const idBadge = document.createElement("div");
+      idBadge.className = "rdc-id";
+      idBadge.textContent = `#${r.id}`;
+
+      const info = document.createElement("div");
+      info.className = "rdc-info";
+      const merchant = document.createElement("div");
+      merchant.className = "rdc-merchant";
+      merchant.textContent = (r.is_refund ? "↩ " : "") + (r.merchant || "알 수 없음");
+      const meta = document.createElement("div");
+      meta.className = "rdc-meta";
+      const total = r.total != null ? r.total.toLocaleString("ko-KR") + "원" : "합계 미상";
+      meta.textContent = `${r.purchase_date || "날짜 미상"} · ${r.item_count ?? 0}개 품목 · ${total}`;
+      info.appendChild(merchant);
+      info.appendChild(meta);
+
+      const delBtn = document.createElement("button");
+      delBtn.className = "rdc-del-btn";
+      delBtn.textContent = "🗑 삭제";
+      delBtn.addEventListener("click", async () => {
+        const label = `${r.merchant || "알 수 없음"} · ${r.purchase_date || "날짜 미상"}`;
+        if (!confirm(`[${label}] 영수증을 삭제할까요?`)) return;
+        delBtn.disabled = true;
+        delBtn.textContent = "삭제 중…";
+        try {
+          const resp = await fetch(
+            `/grocery/receipt/${r.id}`,
+            { method: "DELETE" }
+          );
+          const data = await resp.json();
+          if (data.ok) {
+            card.classList.add("deleted");
+            idBadge.textContent = "✓";
+            delBtn.textContent = "삭제됨";
+            const totalStr = r.total != null ? " · " + r.total.toLocaleString("ko-KR") + "원" : "";
+            const label = `${r.merchant || "알 수 없음"} · ${r.purchase_date || "날짜 미상"}${totalStr}`;
+            fetch("/chat/note", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                session_id: SESSION_ID,
+                user_note: `[영수증 삭제] #${r.id}: ${label}`,
+                assistant_note: `영수증 #${r.id} (${label})이 삭제됐어요. 이제 구매 이력에서 제외됩니다.`,
+              }),
+            }).catch(() => {});
+          } else {
+            delBtn.disabled = false;
+            delBtn.textContent = "🗑 삭제";
+          }
+        } catch {
+          delBtn.disabled = false;
+          delBtn.textContent = "🗑 삭제";
+        }
+      });
+
+      card.appendChild(idBadge);
+      card.appendChild(info);
+      card.appendChild(delBtn);
+      block.appendChild(card);
+    });
+    return block;
+  }
+
+  // ── on-demand receipt card rendering ──
+  async function showReceiptCards(msg) {
+    streaming = true;
+    sendBtn.disabled = true;
+    inputEl.value = "";
+    inputEl.style.height = "auto";
+    addBubble("user", msg);
+    try {
+      const rows = await fetch(`/grocery/recent?days=90`).then(r => r.json());
+      if (!rows || rows.length === 0) {
+        const { bubble } = addBubble("assistant");
+        bubble.textContent = "저장된 영수증이 없어요. 영수증 분석기에서 먼저 영수증을 저장해보세요 🧾";
+      } else {
+        const groups = _groupByMerchant(rows);
+        renderReceiptsIntoChat(rows, `🧾 최근 구매 내역 · ${groups.length}개 업체`);
+        const { bubble } = addBubble("assistant");
+        bubble.textContent = `최근 ${rows.length}건 구매 내역이에요. 더 궁금한 점 있으시면 물어보세요!`;
+      }
+    } catch (err) {
+      const { bubble } = addBubble("assistant");
+      bubble.textContent = `영수증을 불러오지 못했어요: ${err.message}`;
+    }
+    streaming = false;
+    sendBtn.disabled = false;
+    inputEl.focus();
+  }
+
+  // ── receipt history panel ──
+  let _historyDeleteMode    = false;
+  let _historySelected      = new Set();
+  let _historySelectedData  = new Map(); // id → {merchant, purchase_date, total}
+
+  document.getElementById("history-back-btn").addEventListener("click", () => {
+    document.querySelector(".history-title").textContent = "📋 영수증 이력";
+    _goBack();
+  });
+
+  function _updateDeleteHeader() {
+    const selAll  = document.getElementById("history-sel-all");
+    const confirm = document.getElementById("history-del-confirm");
+    const list    = document.getElementById("history-list");
+    const total   = list.querySelectorAll(".hrc").length;
+    const checked = _historySelected.size;
+    confirm.textContent = `선택 삭제 (${checked})`;
+    confirm.classList.toggle("visible", checked > 0);
+    selAll.classList.toggle("visible", _historyDeleteMode);
+    const allSelected = total > 0 && checked === total;
+    selAll.textContent = allSelected ? "전체 해제" : "전체 선택";
+    selAll.classList.toggle("all-selected", allSelected);
+  }
+
+  document.getElementById("history-del-toggle").addEventListener("click", () => {
+    _historyDeleteMode = !_historyDeleteMode;
+    _historySelected.clear();
+    _historySelectedData.clear();
+    const toggle = document.getElementById("history-del-toggle");
+    const list   = document.getElementById("history-list");
+    toggle.classList.toggle("active", _historyDeleteMode);
+    toggle.textContent = _historyDeleteMode ? "취소" : "🗑 삭제";
+    list.classList.toggle("delete-mode", _historyDeleteMode);
+    list.querySelectorAll(".hrc").forEach(c => c.classList.remove("checked"));
+    _updateDeleteHeader();
+  });
+
+  document.getElementById("history-sel-all").addEventListener("click", () => {
+    const list  = document.getElementById("history-list");
+    const cards = [...list.querySelectorAll(".hrc")];
+    const total = cards.length;
+    const allSelected = _historySelected.size === total;
+    _historySelected.clear();
+    _historySelectedData.clear();
+    if (!allSelected) {
+      cards.forEach(card => {
+        const id = parseInt(card.dataset.id);
+        _historySelected.add(id);
+        // data-* 속성에서 복원
+        _historySelectedData.set(id, {
+          merchant:      card.dataset.merchant || null,
+          purchase_date: card.dataset.date     || null,
+          total:         card.dataset.total != null ? parseInt(card.dataset.total) : null,
+        });
+        card.classList.add("checked");
+      });
+    } else {
+      cards.forEach(c => c.classList.remove("checked"));
+    }
+    _updateDeleteHeader();
+  });
+
+  document.getElementById("history-del-confirm").addEventListener("click", async () => {
+    if (_historySelected.size === 0) return;
+    if (!confirm(`${_historySelected.size}개 영수증을 삭제할까요?`)) return;
+    const ids = [..._historySelected];
+    for (const id of ids) {
+      try {
+        const resp = await fetch(`/grocery/receipt/${id}`, { method: "DELETE" });
+        const data = await resp.json();
+        if (data.ok) {
+          const d = _historySelectedData.get(id);
+          const label = d
+            ? `${d.merchant || "알 수 없음"} · ${d.purchase_date || "날짜 미상"}${d.total != null ? " · " + d.total.toLocaleString("ko-KR") + "원" : ""}`
+            : `#${id}`;
+          fetch("/chat/note", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              session_id: SESSION_ID,
+              user_note: `[영수증 삭제] #${id}: ${label}`,
+              assistant_note: `영수증 #${id} (${label})이 삭제됐어요. 이제 구매 이력에서 제외됩니다.`,
+            }),
+          }).catch(() => {});
+        }
+      } catch {}
+    }
+    await openHistoryPanel();
+  });
+
+  let _editingReceiptId = null;
+
+  // ── edit modal state ──
+  let _editOriginalItems = [];  // [{id, raw_name, qty, unit_price, amount}]
+  let _editDeletedIds   = new Set();
+  let _editNewCounter   = 0;
+
+  function _makeEditItemRow(item) {
+    const row = document.createElement("div");
+    row.className = "edit-item-row";
+    row.dataset.itemId = item.id ?? `new-${++_editNewCounter}`;
+
+    const add = document.createElement("button");
+    add.className = "edit-item-add";
+    add.textContent = "+";
+    add.title = "아래에 항목 추가";
+    add.addEventListener("click", () => {
+      const newRow = _makeEditItemRow({ raw_name: "", qty: 1, amount: null });
+      row.insertAdjacentElement("afterend", newRow);
+      newRow.querySelector(".edit-item-name").focus();
+    });
+
+    const del = document.createElement("button");
+    del.className = "edit-item-del";
+    del.textContent = "−";
+    del.title = "항목 삭제";
+    del.addEventListener("click", () => {
+      const id = row.dataset.itemId;
+      if (!String(id).startsWith("new-")) _editDeletedIds.add(Number(id));
+      row.remove();
+    });
+
+    const name = document.createElement("input");
+    name.className = "edit-item-name";
+    name.type = "text";
+    name.value = item.raw_name || "";
+    name.placeholder = "품목명";
+
+    const qty = document.createElement("input");
+    qty.className = "edit-item-qty";
+    qty.type = "number";
+    qty.min = "1";
+    qty.value = item.qty ?? 1;
+    qty.placeholder = "수량";
+
+    const amt = document.createElement("input");
+    amt.className = "edit-item-amount";
+    amt.type = "number";
+    amt.value = item.amount ?? "";
+    amt.placeholder = "금액";
+
+    row.appendChild(add);
+    row.appendChild(del);
+    row.appendChild(name);
+    row.appendChild(qty);
+    row.appendChild(amt);
+    return row;
+  }
+
+  async function openEditModal(receiptId, merchant, purchaseDate) {
+    _editingReceiptId = receiptId;
+    _editDeletedIds.clear();
+    _editNewCounter = 0;
+    document.getElementById("edit-merchant").value = merchant;
+    document.getElementById("edit-date").value = purchaseDate;
+
+    const list = document.getElementById("edit-items-list");
+    list.innerHTML = '<p style="font-size:0.8rem;color:#a89f8f;text-align:center;padding:12px;">불러오는 중…</p>';
+    document.getElementById("receipt-edit-overlay").style.display = "flex";
+
+    try {
+      const detail = await fetch(`/grocery/receipt/${receiptId}`).then(r => r.json());
+      _editOriginalItems = detail.items || [];
+      list.innerHTML = "";
+      _editOriginalItems.forEach(item => list.appendChild(_makeEditItemRow(item)));
+    } catch {
+      list.innerHTML = '<p style="font-size:0.8rem;color:#b3402e;text-align:center;padding:12px;">항목 로드 실패</p>';
+    }
+  }
+
+  document.getElementById("edit-add-item").addEventListener("click", () => {
+    document.getElementById("edit-items-list").appendChild(
+      _makeEditItemRow({ raw_name: "", qty: 1, amount: null })
+    );
+  });
+
+  document.getElementById("edit-cancel").addEventListener("click", () => {
+    document.getElementById("receipt-edit-overlay").style.display = "none";
+  });
+
+  document.getElementById("edit-save").addEventListener("click", async () => {
+    const merchant = document.getElementById("edit-merchant").value.trim();
+    const date     = document.getElementById("edit-date").value;
+    if (!merchant || !date) { alert("업체와 날짜를 입력해주세요."); return; }
+
+    const saveBtn = document.getElementById("edit-save");
+    saveBtn.disabled = true;
+    saveBtn.textContent = "저장 중…";
+
+    try {
+      const list = document.getElementById("edit-items-list");
+      const rows = [...list.querySelectorAll(".edit-item-row")];
+
+      // 1. 메타 수정 (합계는 남은 품목 금액 합산)
+      const newTotal = rows.reduce((sum, row) => {
+        const amt = parseInt(row.querySelector(".edit-item-amount").value) || 0;
+        return sum + (amt > 0 ? amt : 0);
+      }, 0);
+      await fetch(`/grocery/receipt/${_editingReceiptId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ merchant, purchase_date: date, total: newTotal || null }),
+      });
+
+      // 2. 삭제된 품목
+      for (const id of _editDeletedIds) {
+        await fetch(`/grocery/item/${id}`, { method: "DELETE" });
+      }
+
+      // 3. 기존 품목 수정 / 신규 품목 추가
+      for (const row of rows) {
+        const id      = row.dataset.itemId;
+        const rawName = row.querySelector(".edit-item-name").value.trim();
+        const qty     = parseInt(row.querySelector(".edit-item-qty").value) || 1;
+        const amount  = parseInt(row.querySelector(".edit-item-amount").value) || null;
+        if (!rawName) continue;
+
+        if (String(id).startsWith("new-")) {
+          await fetch(`/grocery/receipt/${_editingReceiptId}/item`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ raw_name: rawName, qty, amount }),
+          });
+        } else {
+          await fetch(`/grocery/item/${id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ raw_name: rawName, qty, amount }),
+          });
+        }
+      }
+
+      document.getElementById("receipt-edit-overlay").style.display = "none";
+      await openHistoryPanel();
+    } catch (err) {
+      alert("오류: " + err.message);
+    } finally {
+      saveBtn.disabled = false;
+      saveBtn.textContent = "저장";
+    }
+  });
+
+  async function openHistoryPanel(filterMerchant = null, startDate = null, endDate = null) {
+    _pushAndClose("history-overlay");
+    _historyDeleteMode = false;
+    _historySelected.clear();
+    _historySelectedData.clear();
+    const toggle  = document.getElementById("history-del-toggle");
+    const confirm = document.getElementById("history-del-confirm");
+    const list    = document.getElementById("history-list");
+    const titleEl = document.querySelector(".history-title");
+    toggle.classList.remove("active");
+    toggle.textContent = "🗑 삭제";
+    document.getElementById("history-sel-all").classList.remove("visible", "all-selected");
+    document.getElementById("history-sel-all").textContent = "전체 선택";
+    confirm.classList.remove("visible");
+    confirm.textContent = "선택 삭제 (0)";
+    list.classList.remove("delete-mode");
+    document.getElementById("history-overlay").classList.add("open");
+    list.innerHTML = '<p class="history-empty">불러오는 중…</p>';
+
+    // 날짜 범위가 주어지면 해당 기간 영수증만 조회, 없으면 전체(365일)
+    let url;
+    if (startDate && endDate) {
+      url = `/grocery/history?start_date=${startDate}&end_date=${endDate}`;
+      const fmtD = s => { const d = new Date(s + "T00:00:00"); return `${d.getMonth()+1}/${d.getDate()}`; };
+      titleEl.textContent = `📋 영수증 이력 (${fmtD(startDate)}~${fmtD(endDate)})`;
+    } else {
+      url = `/grocery/history?days=365`;
+      titleEl.textContent = "📋 영수증 이력";
+    }
+
+    try {
+      const rows = await fetch(url).then(r => r.json());
+      list.innerHTML = "";
+      if (!rows || rows.length === 0) {
+        list.innerHTML = '<p class="history-empty">저장된 영수증이 없어요.<br>＋ 추가 버튼으로 영수증을 올려보세요 🧾</p>';
+        return;
+      }
+      rows.forEach(r => list.appendChild(_buildHistoryCard(r)));
+      _renderFilterBar(rows, filterMerchant);
+      requestAnimationFrame(() => {
+        list.querySelectorAll(".hrc").forEach(card => {
+          const m = card.querySelector(".hrc-merchant");
+          const btn = card.querySelector(".hrc-merchant-toggle");
+          if (m && btn && m.scrollHeight > m.clientHeight + 1) {
+            btn.classList.add("visible");
+          }
+        });
+      });
+    } catch (err) {
+      list.innerHTML = `<p class="history-empty">오류: ${err.message}</p>`;
+    }
+  }
+
+  function _renderFilterBar(rows, initialFilter = null) {
+    const bar = document.getElementById("history-filter-bar");
+    if (!rows || rows.length === 0) { bar.style.display = "none"; return; }
+
+    // gather merchants
+    const merchants = ["전체", ...new Set(rows.map(r => r.merchant || "알 수 없음"))];
+    const selectedSet = new Set();   // empty = 전체 표시
+
+    const chipsEl = document.createElement("div");
+    chipsEl.className = "history-filter-chips";
+    const statEl = document.createElement("div");
+    statEl.className = "history-filter-stat";
+
+    function updateStat() {
+      const filtered = selectedSet.size === 0
+        ? rows
+        : rows.filter(r => selectedSet.has(r.merchant || "알 수 없음"));
+      const total = filtered.reduce((s, r) => s + (r.total || 0), 0);
+      statEl.innerHTML = `<strong>${filtered.length}건</strong> · 합계 <strong>${total.toLocaleString("ko-KR")}원</strong>`;
+    }
+
+    function applyFilter(m) {
+      if (m === "전체") {
+        selectedSet.clear();
+      } else {
+        if (selectedSet.has(m)) selectedSet.delete(m);
+        else selectedSet.add(m);
+      }
+      chipsEl.querySelectorAll(".hfc").forEach(c => {
+        if (c.dataset.m === "전체") c.classList.toggle("active", selectedSet.size === 0);
+        else c.classList.toggle("active", selectedSet.has(c.dataset.m));
+      });
+      updateStat();
+      document.getElementById("history-list").querySelectorAll(".hrc").forEach(card => {
+        const cm = card.dataset.merchant || "알 수 없음";
+        card.style.display = (selectedSet.size === 0 || selectedSet.has(cm)) ? "" : "none";
+      });
+    }
+
+    merchants.forEach(m => {
+      const btn = document.createElement("button");
+      btn.className = "hfc" + (m === "전체" ? " active" : "");
+      btn.dataset.m = m;
+      btn.textContent = m;
+      btn.addEventListener("click", () => applyFilter(m));
+      chipsEl.appendChild(btn);
+    });
+
+    const chipToggle = document.createElement("button");
+    chipToggle.className = "history-filter-toggle";
+    chipToggle.textContent = "▼ 더보기";
+    chipToggle.addEventListener("click", () => {
+      const expanded = chipsEl.classList.toggle("hfc-expanded");
+      chipsEl.style.maxHeight = expanded ? "none" : chipsEl.dataset.clampHeight + "px";
+      chipToggle.textContent = expanded ? "▲ 접기" : "▼ 더보기";
+    });
+
+    const rowEl = document.createElement("div");
+    rowEl.className = "history-filter-row";
+    rowEl.appendChild(chipsEl);
+    rowEl.appendChild(chipToggle);
+
+    bar.innerHTML = "";
+    bar.appendChild(rowEl);
+    bar.appendChild(statEl);
+    bar.style.display = "flex";
+
+    // 칩이 2줄을 넘으면 접어두고 ▼ 버튼으로 펼치게 함
+    requestAnimationFrame(() => {
+      const chips = Array.from(chipsEl.children);
+      const baseTop = chipsEl.getBoundingClientRect().top;
+      const rowTops = [...new Set(chips.map(c => Math.round(c.getBoundingClientRect().top - baseTop)))].sort((a, b) => a - b);
+      if (rowTops.length > 2) {
+        chipsEl.dataset.clampHeight = rowTops[2];
+        chipsEl.style.maxHeight = rowTops[2] + "px";
+        chipToggle.classList.add("visible");
+      }
+    });
+
+    // 초기 필터 (weekly 패널에서 업체명 클릭 시)
+    if (initialFilter && merchants.includes(initialFilter)) {
+      applyFilter(initialFilter);
+    } else {
+      updateStat();
+    }
+  }
+
+  document.getElementById("weekly-btn").addEventListener("click", () => {
+    document.getElementById("hamburger-menu").classList.remove("open");
+    openWeeklyPanel();
+  });
+  document.getElementById("weekly-back-btn").addEventListener("click", _goBack);
+  document.getElementById("weekly-apply-btn").addEventListener("click", () => {
+    openWeeklyPanel();
+  });
+
+  // ── 뭘 샀을까? / 뭘 먹었을까? — 공유 패널 팩토리 ────────────────────────────
+
+  const _PURCHASE_COLORS = ["#26221c","#b3402e","#6f6759","#a99c84","#524940","#c2b393","#8d8474"];
+
+  function _buildDonutSvg(categories, totalAmt) {
+    const R = 50, CX = 70, CY = 70, STROKE = 20;
+    const circ = 2 * Math.PI * R;
+    let offset = 0;
+    const segs = categories.map((cat, i) => {
+      const frac = totalAmt > 0 ? cat.amount / totalAmt : 0;
+      const dash = frac * circ;
+      const seg = `<circle cx="${CX}" cy="${CY}" r="${R}" fill="none"
+        stroke="${_PURCHASE_COLORS[i % _PURCHASE_COLORS.length]}" stroke-width="${STROKE}"
+        stroke-dasharray="${dash.toFixed(2)} ${(circ - dash).toFixed(2)}"
+        stroke-dashoffset="${(-offset + circ * 0.25).toFixed(2)}"
+        data-cat="${cat.name}" class="donut-seg" style="cursor:pointer"/>`;
+      offset += dash;
+      return seg;
+    }).join("");
+    return `<svg width="140" height="140" viewBox="0 0 140 140">${segs}
+      <circle cx="${CX}" cy="${CY}" r="${R - STROKE / 2 - 1}" fill="#faf8f3"/>
+    </svg>`;
+  }
+
+  function _createPurchaseLikePanel(opts) {
+    // opts: overlayId, titleId, contentId, startId, endId, endpoint, title, aiLabel, emptyMsg, defaultDays
+    const st = { data: null, category: null, sort: "time-desc" };
+
+    function defaultDates() {
+      const end = new Date();
+      const start = new Date();
+      start.setDate(start.getDate() - (opts.defaultDays - 1));
+      return { start: start.toISOString().slice(0, 10), end: end.toISOString().slice(0, 10) };
+    }
+
+    function getFilteredItems() {
+      if (!st.data) return [];
+      let items = st.data.items;
+      if (st.category) {
+        const cat = st.data.categories.find(c => c.name === st.category);
+        const names = new Set(cat ? cat.item_names : []);
+        items = items.filter(i => names.has(i.raw_name));
+      }
+      const sorted = [...items];
+      if (st.sort === "time-asc")    sorted.sort((a, b) => (a.purchase_date || "").localeCompare(b.purchase_date || ""));
+      if (st.sort === "time-desc")   sorted.sort((a, b) => (b.purchase_date || "").localeCompare(a.purchase_date || ""));
+      if (st.sort === "amount-desc") sorted.sort((a, b) => (b.amount || 0) - (a.amount || 0));
+      return sorted;
+    }
+
+    function renderItemList(content) {
+      const items = getFilteredItems();
+      content.querySelectorAll(".purchase-items-header, .purchase-item-card").forEach(el => el.remove());
+
+      const header = document.createElement("div");
+      header.className = "purchase-items-header";
+      const catLabel = st.category ? `${st.category} · ` : "";
+      header.textContent = `${catLabel}${items.length}건`;
+      content.appendChild(header);
+
+      items.forEach(item => {
+        const card = document.createElement("div");
+        card.className = "purchase-item-card";
+        const dateStr = item.purchase_date ? item.purchase_date.slice(5).replace("-", "/") : "";
+        card.innerHTML = `
+          <div class="purchase-item-left">
+            <div class="purchase-item-name">${item.raw_name}</div>
+            <div class="purchase-item-meta">${item.merchant || ""} · ${dateStr}</div>
+          </div>
+          <div class="purchase-item-amount">${(item.amount || 0).toLocaleString("ko-KR")}원</div>`;
+        content.appendChild(card);
+      });
+    }
+
+    function render() {
+      const content = document.getElementById(opts.contentId);
+      content.innerHTML = "";
+
+      // 총 금액 배너
+      const totalAmt = (st.data.items || []).reduce((s, i) => s + (i.amount || 0), 0);
+      const banner = document.createElement("div");
+      banner.className = "purchase-total-banner";
+      banner.innerHTML = `<span>총 지출</span><strong>${totalAmt.toLocaleString("ko-KR")}원</strong>`;
+      content.appendChild(banner);
+
+      // AI 요약
+      if (st.data.summary) {
+        const aiBox = document.createElement("div");
+        aiBox.className = "purchase-ai-box";
+        aiBox.innerHTML = DOMPurify.sanitize(
+          `<strong>${opts.aiLabel}</strong><br>${st.data.summary.replace(/\\n|\n/g, "<br>")}`
+        );
+        content.appendChild(aiBox);
+      }
+
+      // 정렬 바
+      const sortBar = document.createElement("div");
+      sortBar.className = "purchase-sort-bar";
+      [["time-desc","시간역순"],["time-asc","시간순"],["amount-desc","고액순"]].forEach(([key, label]) => {
+        const btn = document.createElement("button");
+        btn.className = "purchase-sort-btn" + (key === st.sort ? " active" : "");
+        btn.textContent = label;
+        btn.addEventListener("click", () => {
+          st.sort = key;
+          sortBar.querySelectorAll(".purchase-sort-btn").forEach(b => b.classList.toggle("active", b === btn));
+          renderItemList(content);
+        });
+        sortBar.appendChild(btn);
+      });
+      content.appendChild(sortBar);
+
+      // 도넛 + 범례
+      const cats = st.data.categories || [];
+      if (cats.length > 0) {
+        const totalCatAmt = cats.reduce((s, c) => s + c.amount, 0);
+        const donutWrap = document.createElement("div");
+        donutWrap.className = "purchase-donut-wrap";
+
+        const svgEl = document.createElement("div");
+        svgEl.innerHTML = _buildDonutSvg(cats, totalCatAmt);
+        const svg = svgEl.firstElementChild;
+
+        const legend = document.createElement("div");
+        legend.className = "purchase-legend";
+
+        const updateCatSelection = (selectedCat) => {
+          st.category = selectedCat;
+          legend.querySelectorAll(".purchase-legend-item").forEach(el => {
+            el.classList.toggle("active", el.dataset.cat === selectedCat);
+          });
+          svg.querySelectorAll(".donut-seg").forEach(seg => {
+            seg.style.opacity = (selectedCat && seg.dataset.cat !== selectedCat) ? "0.35" : "1";
+          });
+          renderItemList(content);
+        };
+
+        cats.forEach((cat, i) => {
+          const pct = totalCatAmt > 0 ? Math.round(cat.amount / totalCatAmt * 100) : 0;
+          const item = document.createElement("div");
+          item.className = "purchase-legend-item" + (cat.name === st.category ? " active" : "");
+          item.dataset.cat = cat.name;
+          item.innerHTML = `<span class="purchase-legend-dot" style="background:${_PURCHASE_COLORS[i % _PURCHASE_COLORS.length]}"></span>
+            <span class="purchase-legend-name">${cat.name}</span>
+            <span class="purchase-legend-pct">${pct}%</span>
+            <span class="purchase-legend-amt">${cat.amount.toLocaleString("ko-KR")}원</span>`;
+          item.addEventListener("click", () => {
+            updateCatSelection(st.category === cat.name ? null : cat.name);
+          });
+          legend.appendChild(item);
+        });
+
+        svg.querySelectorAll(".donut-seg").forEach(seg => {
+          seg.addEventListener("click", () => {
+            const name = seg.dataset.cat;
+            updateCatSelection(st.category === name ? null : name);
+          });
+        });
+
+        donutWrap.appendChild(svg);
+        donutWrap.appendChild(legend);
+        content.appendChild(donutWrap);
+      }
+
+      renderItemList(content);
+    }
+
+    async function open() {
+      _pushAndClose(opts.overlayId);
+      document.getElementById(opts.overlayId).classList.add("open");
+      const content = document.getElementById(opts.contentId);
+      const startInput = document.getElementById(opts.startId);
+      const endInput   = document.getElementById(opts.endId);
+
+      if (!startInput.value || !endInput.value) {
+        const { start, end } = defaultDates();
+        startInput.value = start;
+        endInput.value   = end;
+      }
+
+      const startDate = startInput.value;
+      const endDate   = endInput.value;
+
+      content.innerHTML = '<p class="week-empty">🤖 AI가 분석 중…</p>';
+      document.getElementById(opts.titleId).textContent = opts.title;
+
+      st.category = null;
+      st.sort = "time-desc";
+      st.data = null;
+
+      try {
+        const resp = await fetch(opts.endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ start_date: startDate, end_date: endDate }),
+        });
+        st.data = await resp.json();
+      } catch (e) {
+        content.innerHTML = '<p class="week-empty">분석 중 오류가 발생했습니다.</p>';
+        return;
+      }
+
+      if (!st.data.items || st.data.items.length === 0) {
+        content.innerHTML = `<p class="week-empty">${opts.emptyMsg}</p>`;
+        return;
+      }
+
+      render();
+    }
+
+    return { open };
+  }
+
+  const _purchasePanel = _createPurchaseLikePanel({
+    overlayId: "purchase-overlay", titleId: "purchase-title", contentId: "purchase-content",
+    startId: "purchase-start-date", endId: "purchase-end-date",
+    endpoint: "/grocery/analyze-purchases", title: "🛒 뭘 샀을까?", aiLabel: "구매 분석",
+    emptyMsg: "해당 기간에 구매 내역이 없어요.", defaultDays: 7,
+  });
+  function openPurchasePanel() { return _purchasePanel.open(); }
+
+  document.getElementById("purchase-btn").addEventListener("click", () => {
+    document.getElementById("hamburger-menu").classList.remove("open");
+    openPurchasePanel();
+  });
+  document.getElementById("purchase-back-btn").addEventListener("click", _goBack);
+  document.getElementById("purchase-hamburger-btn").addEventListener("click", toggleHamburger);
+  document.getElementById("purchase-apply-btn").addEventListener("click", openPurchasePanel);
+
+  // ── 뭘 먹었을까? ──────────────────────────────────────────────────────────
+
+  const _eatenPanel = _createPurchaseLikePanel({
+    overlayId: "eaten-overlay", titleId: "eaten-title", contentId: "eaten-content",
+    startId: "eaten-start-date", endId: "eaten-end-date",
+    endpoint: "/grocery/analyze-eaten", title: "🍽️ 뭘 먹었을까?", aiLabel: "식생활 분석",
+    emptyMsg: "해당 기간에 식료품・외식 내역이 없어요.", defaultDays: 7,
+  });
+  function openEatenPanel() { return _eatenPanel.open(); }
+
+  document.getElementById("eaten-btn").addEventListener("click", () => {
+    document.getElementById("hamburger-menu").classList.remove("open");
+    openEatenPanel();
+  });
+  document.getElementById("eaten-back-btn").addEventListener("click", _goBack);
+  document.getElementById("eaten-hamburger-btn").addEventListener("click", toggleHamburger);
+  document.getElementById("eaten-apply-btn").addEventListener("click", openEatenPanel);
+
+  document.getElementById("spending-btn").addEventListener("click", () => {
+    document.getElementById("hamburger-menu").classList.remove("open");
+    openSpendingPanel("weekly");
+  });
+  document.getElementById("spending-back-btn").addEventListener("click", _goBack);
+  document.getElementById("spending-hamburger-btn").addEventListener("click", toggleHamburger);
+  document.querySelectorAll(".spending-tab").forEach(tab => {
+    tab.addEventListener("click", () => openSpendingPanel(tab.dataset.mode));
+  });
+
+  // ── 주간 지출 기본 날짜 ──────────────────────────────────────────────────
+
+  function _weeklyDefaultDates() {
+    const end = new Date();
+    const start = new Date();
+    start.setDate(start.getDate() - 30);
+    return {
+      start: start.toISOString().slice(0, 10),
+      end: end.toISOString().slice(0, 10),
+    };
+  }
+
+  let _weeklyExportData = null;
+
+  // 업체별 고정 색상: 알려진 업체는 지정색, 나머지는 이름 해시로 결정
+  const _MERCHANT_FIXED = {
+    "이마트":      "#c07f2a",
+    "쿠팡":        "#b3402e",
+    "네이버":      "#03C75A",
+    "네이버쇼핑":  "#03C75A",
+    "네이버페이":  "#03C75A",
+    "하나로마트":   "#3AAA35",
+    "농협하나로마트": "#3AAA35",
+  };
+  const _MERCHANT_PALETTE = [
+    "#b3402e","#4a5a2e","#2b5d73","#c07f2a",
+    "#8a4a62","#6f6759","#524940","#26221c",
+  ];
+  function _merchantColor(name) {
+    if (_MERCHANT_FIXED[name]) return _MERCHANT_FIXED[name];
+    let h = 0;
+    for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffff;
+    return _MERCHANT_PALETTE[h % _MERCHANT_PALETTE.length];
+  }
+
+  async function openWeeklyPanel() {
+    _pushAndClose("weekly-overlay");
+    document.getElementById("weekly-overlay").classList.add("open");
+    const content = document.getElementById("weekly-content");
+    const startInput = document.getElementById("weekly-start-date");
+    const endInput   = document.getElementById("weekly-end-date");
+
+    // 기본값 설정 (최초 1회)
+    if (!startInput.value || !endInput.value) {
+      const { start, end } = _weeklyDefaultDates();
+      startInput.value = start;
+      endInput.value   = end;
+    }
+
+    const fromDate = startInput.value;
+    const toDate   = endInput.value;
+
+    content.innerHTML = '<p class="week-empty">불러오는 중…</p>';
+    const titleEl = document.querySelector(".weekly-title");
+    titleEl.textContent = "📅 주간 지출 (불러오는 중…)";
+
+    try {
+      const url = `/grocery/history?start_date=${fromDate}&end_date=${toDate}`;
+      const rows = await fetch(url).then(r => r.json());
+      content.innerHTML = "";
+
+      if (!rows || rows.length === 0) {
+        content.innerHTML = '<p class="week-empty">해당 기간에 저장된 영수증이 없어요.<br>영수증 분석기에서 영수증을 추가해보세요 🧾</p>';
+        titleEl.textContent = "📅 주간 지출";
+        return;
+      }
+
+      function weekMonday(dateStr) {
+        const d = new Date(dateStr + "T00:00:00");
+        const day = d.getDay();
+        const diff = day === 0 ? -6 : 1 - day;
+        d.setDate(d.getDate() + diff);
+        return d.toISOString().slice(0, 10);
+      }
+
+      console.log("[weekly] 조회 범위:", fromDate, "~", toDate, "/ 반환 영수증 수:", rows.length);
+      console.table(rows.map(r => ({ id: r.id, merchant: r.merchant, purchase_date: r.purchase_date, total: r.total, is_refund: r.is_refund })));
+
+      const weekMap = new Map();
+      rows.forEach(r => {
+        if (!r.purchase_date || !r.total) {
+          console.log("[weekly] 제외됨:", r.id, r.merchant, "날짜:", r.purchase_date, "금액:", r.total);
+          return;
+        }
+        const wk = weekMonday(r.purchase_date);
+        if (!weekMap.has(wk)) weekMap.set(wk, { total: 0, receipts: [] });
+        const entry = weekMap.get(wk);
+        entry.total += r.total;
+        entry.receipts.push(r);
+      });
+
+      const weeks    = [...weekMap.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+      const maxTotal = Math.max(...weeks.map(([, v]) => v.total));
+      const totalSpent = weeks.reduce((s, [, { total }]) => s + total, 0);
+
+      const fmtDate = s => {
+        const d = new Date(s + "T00:00:00");
+        return `${d.getMonth() + 1}/${d.getDate()}`;
+      };
+      const fmtAmt = n => n.toLocaleString("ko-KR") + "원";
+
+      // export용 데이터 초기화
+      _weeklyExportData = { fromDate, toDate, totalSpent, fmtDate, weeks: [] };
+
+      const fromLabel = fmtDate(fromDate);
+      const toLabel   = fmtDate(toDate);
+      titleEl.textContent = `📅 주간 지출 (${fromLabel}~${toLabel}: ${totalSpent.toLocaleString("ko-KR")}원)`;
+
+      const thisMonday = weekMonday(new Date().toISOString().slice(0, 10));
+
+      weeks.forEach(([monday, { total, receipts }], idx) => {
+        const endDt = new Date(monday + "T00:00:00");
+        endDt.setDate(endDt.getDate() + 6);
+        const endStr = endDt.toISOString().slice(0, 10);
+
+        let weekLabel;
+        if (monday === thisMonday)           weekLabel = `이번 주 (${fmtDate(monday)} ~ ${fmtDate(endStr)})`;
+        else if (idx === 0)                  weekLabel = `저번 주 (${fmtDate(monday)} ~ ${fmtDate(endStr)})`;
+        else                                 weekLabel = `${fmtDate(monday)} ~ ${fmtDate(endStr)}`;
+
+        const merchantMap = new Map();
+        receipts.forEach(r => {
+          const m = r.merchant || "알 수 없음";
+          merchantMap.set(m, (merchantMap.get(m) || 0) + (r.total || 0));
+        });
+        const topMerchants = [...merchantMap.entries()].sort((a, b) => b[1] - a[1]);
+
+        const colorMap = new Map();
+        topMerchants.forEach(([m]) => colorMap.set(m, _merchantColor(m)));
+
+        const card = document.createElement("div");
+        card.className = "week-card";
+        card.innerHTML = `
+          <div class="week-card-header">
+            <span class="week-label">${weekLabel}</span>
+            <span class="week-total">${fmtAmt(total)}</span>
+          </div>
+          <div class="week-stacked-bar"></div>
+          <div class="week-merchants"></div>
+        `;
+
+        // stacked bar — 각 업체 비중 세그먼트
+        const stackedBar = card.querySelector(".week-stacked-bar");
+        let _accPct = 0;
+        topMerchants.forEach(([m, t], si) => {
+          const rawPct = total > 0 ? (t / total) * 100 : 0;
+          const isLast = si === topMerchants.length - 1;
+          const pct = isLast ? (100 - _accPct) : Math.round(rawPct);
+          if (!isLast) _accPct += pct;
+          const seg = document.createElement("div");
+          seg.className = "week-stacked-segment";
+          seg.style.width = pct + "%";
+          seg.style.background = colorMap.get(m);
+          seg.title = `${m} ${Math.round(rawPct)}%`;
+          stackedBar.appendChild(seg);
+        });
+
+        // 업체 목록 — 색상 도트 + 업체명(클릭) + 금액
+        const merchantsEl = card.querySelector(".week-merchants");
+        topMerchants.forEach(([m, t]) => {
+          const row = document.createElement("div");
+          row.className = "week-merchant-row";
+
+          const dot = document.createElement("span");
+          dot.className = "week-merchant-dot";
+          dot.style.background = colorMap.get(m);
+
+          const nameEl = document.createElement("span");
+          nameEl.className = "week-merchant-name";
+          nameEl.textContent = m;
+          nameEl.addEventListener("click", () => {
+            document.getElementById("weekly-overlay").classList.remove("open");
+            openHistoryPanel(m, fromDate, toDate);
+          });
+
+          const amtEl = document.createElement("span");
+          amtEl.className = "week-merchant-amt";
+          amtEl.textContent = fmtAmt(t);
+
+          row.appendChild(dot);
+          row.appendChild(nameEl);
+          row.appendChild(amtEl);
+          merchantsEl.appendChild(row);
+        });
+
+        // export 데이터 수집
+        _weeklyExportData.weeks.push({
+          weekLabel, total, topMerchants,
+          colorMap: Object.fromEntries(colorMap),
+        });
+
+        content.appendChild(card);
+      });
+    } catch (err) {
+      content.innerHTML = `<p class="week-empty">오류: ${err.message}</p>`;
+    }
+  }
+
+  // ── 소비 분석 패널 ──────────────────────────────────────────
+
+  function _renderSpendingChart(container, {summary, weeks}) {
+    container.innerHTML = "";
+    if (!summary && (!weeks || weeks.length === 0)) {
+      container.innerHTML = '<p class="week-empty">분석 결과가 없습니다.</p>';
+      return;
+    }
+
+    const box = document.createElement("div");
+    box.className = "weekly-ai-box";
+
+    const titleEl = document.createElement("strong");
+    titleEl.textContent = "소비 패턴 분석";
+    box.appendChild(titleEl);
+
+    if (summary) {
+      const summaryEl = document.createElement("div");
+      summaryEl.className = "wai-summary";
+      summaryEl.innerHTML = DOMPurify.sanitize(summary.replace(/\\n|\n/g, "<br>"));
+      box.appendChild(summaryEl);
+    }
+
+    if (weeks && weeks.length >= 1) {
+      const CATS = ["신선식품", "가공식품", "음료/주류", "생활용품", "반려동물용품", "기타"];
+      const thisWeek = weeks[0];
+      const lastWeek = weeks[1] || null;
+
+      const allAmts = CATS.flatMap(c => [
+        thisWeek.categories?.[c] || 0,
+        lastWeek ? (lastWeek.categories?.[c] || 0) : 0,
+      ]);
+      const maxAmt = Math.max(...allAmts, 1);
+
+      const legend = document.createElement("div");
+      legend.className = "wai-legend-bar";
+      legend.innerHTML = `<span><span class="wai-legend-dot" style="background:#b3402e"></span>${thisWeek.label || "이번 주"} ${(thisWeek.total || 0).toLocaleString("ko-KR")}원</span>${lastWeek ? `<span><span class="wai-legend-dot" style="background:#b5ab99"></span>${lastWeek.label || "지난 주"} ${(lastWeek.total || 0).toLocaleString("ko-KR")}원</span>` : ""}`;
+      box.appendChild(legend);
+
+      const mkBar = (amt, cls) => {
+        const wrap = document.createElement("div");
+        wrap.className = "wai-bar-wrap";
+        const bar = document.createElement("div");
+        bar.className = `wai-bar ${cls}`;
+        bar.style.width = `${((amt / maxAmt) * 100).toFixed(1)}%`;
+        const lbl = document.createElement("span");
+        lbl.className = "wai-bar-amt";
+        lbl.textContent = amt > 0 ? amt.toLocaleString("ko-KR") + "원" : "";
+        wrap.appendChild(bar);
+        wrap.appendChild(lbl);
+        return wrap;
+      };
+
+      CATS.forEach(cat => {
+        const thisAmt = thisWeek.categories?.[cat] || 0;
+        const lastAmt = lastWeek?.categories?.[cat] || 0;
+        if (thisAmt === 0 && lastAmt === 0) return;
+
+        const row = document.createElement("div");
+        row.className = "wai-cat-row";
+        const label = document.createElement("div");
+        label.className = "wai-cat-label";
+        label.textContent = cat;
+        const bars = document.createElement("div");
+        bars.className = "wai-bars";
+        bars.appendChild(mkBar(thisAmt, "this-week"));
+        if (lastWeek) bars.appendChild(mkBar(lastAmt, "last-week"));
+        row.appendChild(label);
+        row.appendChild(bars);
+        box.appendChild(row);
+      });
+    }
+
+    container.appendChild(box);
+  }
+
+  let _spendingMode = "weekly";
+
+  function _spendingDefaultDates(mode) {
+    const today = new Date();
+    const end = today.toISOString().slice(0, 10);
+    if (mode === "weekly") {
+      const s = new Date(today);
+      s.setDate(s.getDate() - 13);
+      return { start: s.toISOString().slice(0, 10), end };
+    } else {
+      const s = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      return { start: s.toISOString().slice(0, 10), end };
+    }
+  }
+
+  async function openSpendingPanel(mode) {
+    _spendingMode = mode || _spendingMode;
+    _pushAndClose("spending-overlay");
+    document.getElementById("spending-overlay").classList.add("open");
+
+    document.querySelectorAll(".spending-tab").forEach(t =>
+      t.classList.toggle("active", t.dataset.mode === _spendingMode)
+    );
+
+    const content = document.getElementById("spending-content");
+    content.innerHTML = '<p class="week-empty">AI 분석 중…</p>';
+
+    const { start, end } = _spendingDefaultDates(_spendingMode);
+    const endpoint = _spendingMode === "weekly"
+      ? "/grocery/analyze-weekly"
+      : "/grocery/analyze-monthly";
+
+    try {
+      const data = await fetch(endpoint, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({start_date: start, end_date: end}),
+      }).then(r => r.json());
+      _renderSpendingChart(content, data);
+    } catch (err) {
+      content.innerHTML = `<p class="week-empty">오류: ${err.message}</p>`;
+    }
+  }
+
+  function _buildWeeklyExportHtml() {
+    if (!_weeklyExportData) return null;
+    const { fromDate, toDate, totalSpent, fmtDate, weeks } = _weeklyExportData;
+    const fmtAmt = n => n.toLocaleString("ko-KR") + "원";
+    const fmtFull = s => {
+      const d = new Date(s + "T00:00:00");
+      return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,"0")}.${String(d.getDate()).padStart(2,"0")}`;
+    };
+
+    const weeksHtml = weeks.map(({ weekLabel, total, topMerchants, colorMap }) => {
+      let acc = 0;
+      const barSegs = topMerchants.map(([m, t], si) => {
+        const rawPct = total > 0 ? (t / total) * 100 : 0;
+        const isLast = si === topMerchants.length - 1;
+        const pct = isLast ? (100 - acc) : Math.round(rawPct);
+        if (!isLast) acc += pct;
+        return `<div style="height:100%;width:${pct}%;background:${colorMap[m]};"></div>`;
+      }).join("");
+
+      const tableRows = topMerchants.map(([m, t]) => {
+        const pct = total > 0 ? Math.round((t / total) * 100) : 0;
+        return `<tr>
+          <td style="padding:6px 8px;border-top:1px solid #ece7db;">
+            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${colorMap[m]};margin-right:6px;vertical-align:middle;"></span>${m}
+          </td>
+          <td style="padding:6px 8px;text-align:right;border-top:1px solid #ece7db;color:#8d8474;">${pct}%</td>
+          <td style="padding:6px 8px;text-align:right;border-top:1px solid #ece7db;font-weight:700;">${fmtAmt(t)}</td>
+        </tr>`;
+      }).join("");
+
+      return `<div style="margin-bottom:20px;border:1.5px solid #ddd6c8;border-radius: 4px;padding:16px;">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;">
+          <span style="font-weight:600;color:#5d5548;font-size:13px;">${weekLabel}</span>
+          <span style="font-weight:800;font-size:17px;color:#26221c;">${fmtAmt(total)}</span>
+        </div>
+        <div style="display:flex;border-radius: 2px;overflow:hidden;height:12px;margin-bottom:14px;">${barSegs}</div>
+        <table style="width:100%;border-collapse:collapse;font-size:13.5px;">${tableRows}</table>
+      </div>`;
+    }).join("");
+
+    return `<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>주간 지출 현황 ${fmtFull(fromDate)}~${fmtFull(toDate)}</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Noto Sans KR", "Malgun Gothic", sans-serif; max-width: 640px; margin: 40px auto; padding: 0 24px; color: #26221c; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: #6f6759; font-size: 13px; margin-bottom: 28px; }
+  .foot { font-size: 11px; color: #a89f8f; text-align: right; margin-top: 32px; }
+  .pdf-save-bar { position: sticky; top: 0; background: #faf8f3; padding: 10px 0 12px; margin-bottom: 20px; display: flex; gap: 8px; border-bottom: 1px solid #ddd6c8; z-index: 10; }
+  .pdf-save-btn { padding: 8px 20px; background: #b3402e; color: #faf8f3; border: none; border-radius: 3px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; }
+  .pdf-save-btn:hover { background: #9a3527; }
+  @media print { .pdf-save-bar { display: none; } body { margin: 16px; } }
+</style>
+</head>
+<body>
+<div class="pdf-save-bar">
+  <button class="pdf-save-btn" onclick="window.print()">PDF 저장</button>
+</div>
+<h1>주간 지출 현황</h1>
+<div class="sub">${fmtFull(fromDate)} ~ ${fmtFull(toDate)} &nbsp;·&nbsp; 합계 <strong>${fmtAmt(totalSpent)}</strong></div>
+${weeksHtml}
+<div class="foot">출력일: ${new Date().toLocaleDateString("ko-KR")}</div>
+</body>
+</html>`;
+  }
+
+  document.getElementById("weekly-export-html-btn").addEventListener("click", async () => {
+    const html = _buildWeeklyExportHtml();
+    if (!html) return;
+    const { fromDate, toDate } = _weeklyExportData;
+    const filename = `주간지출_${fromDate}_${toDate}.html`;
+    if (await saveAndShareFile(filename, html, "text/html")) return;
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  document.getElementById("weekly-export-pdf-btn").addEventListener("click", () => {
+    const html = _buildWeeklyExportHtml();
+    if (!html) return;
+    const win = window.open("", "_blank", "width=700,height=900");
+    if (!win) { alert("팝업이 차단되었습니다. 브라우저 설정에서 팝업을 허용해주세요."); return; }
+    win.document.write(html);
+    win.document.close();
+  });
+
+  function _buildHistoryCard(r) {
+    const fmtAmt = n => n != null ? Math.abs(n).toLocaleString("ko-KR") + "원" : "—";
+
+    const card = document.createElement("div");
+    card.className = "hrc";
+    card.dataset.id       = r.id;
+    card.dataset.merchant = r.merchant     || "";
+    card.dataset.date     = r.purchase_date || "";
+    if (r.total != null) card.dataset.total = r.total;
+
+    const row = document.createElement("div");
+    row.className = "hrc-row";
+
+    const check = document.createElement("div");
+    check.className = "hrc-check";
+    check.textContent = "✓";
+
+    const icon = document.createElement("div");
+    icon.className = "hrc-icon";
+    icon.textContent = r.is_refund ? "↩" : "🧾";
+
+    const body = document.createElement("div");
+    body.className = "hrc-body";
+    const merchantDiv = document.createElement("div");
+    merchantDiv.className = "hrc-merchant";
+    merchantDiv.textContent = r.merchant || "알 수 없음";
+    const merchantToggle = document.createElement("button");
+    merchantToggle.className = "hrc-merchant-toggle";
+    merchantToggle.textContent = "▼ 더보기";
+    merchantToggle.addEventListener("click", e => {
+      e.stopPropagation();
+      const expanded = merchantDiv.classList.toggle("mc-expanded");
+      merchantToggle.textContent = expanded ? "▲ 접기" : "▼ 더보기";
+    });
+    const metaDiv = document.createElement("div");
+    metaDiv.className = "hrc-meta";
+    metaDiv.textContent = `${r.purchase_date || "날짜 미상"} · ${r.item_count ?? 0}개 품목`;
+    body.appendChild(merchantDiv);
+    body.appendChild(merchantToggle);
+    body.appendChild(metaDiv);
+
+    const right = document.createElement("div");
+    right.className = "hrc-right";
+    const amountDiv = document.createElement("div");
+    amountDiv.className = "hrc-amount";
+    amountDiv.textContent = fmtAmt(r.total);
+    const arrow = document.createElement("div");
+    arrow.className = "hrc-expand";
+    arrow.textContent = "▼";
+    right.appendChild(amountDiv);
+    right.appendChild(arrow);
+
+    row.appendChild(check);
+    row.appendChild(icon);
+    row.appendChild(body);
+
+    const editBtn = document.createElement("button");
+    editBtn.className = "hrc-edit-btn";
+    editBtn.textContent = "수정";
+    editBtn.addEventListener("click", e => {
+      e.stopPropagation();
+      openEditModal(r.id, r.merchant || "", r.purchase_date || "");
+    });
+    right.appendChild(editBtn);
+
+    row.appendChild(right);
+
+    const detail = document.createElement("div");
+    detail.className = "hrc-detail";
+
+    card.appendChild(row);
+    card.appendChild(detail);
+
+    // 화살표 클릭: 삭제 모드와 무관하게 항상 상세 펼치기/접기
+    arrow.addEventListener("click", e => {
+      e.stopPropagation();
+      const isExpanded = card.classList.contains("expanded");
+      card.classList.toggle("expanded");
+      if (!isExpanded && !detail.dataset.loaded) {
+        _loadReceiptDetail(r.id, detail);
+      }
+      if (!isExpanded) {
+        setTimeout(() => card.scrollIntoView({ behavior: "smooth", block: "nearest" }), 50);
+      }
+    });
+
+    row.addEventListener("click", () => {
+      if (_historyDeleteMode) {
+        const id = parseInt(card.dataset.id);
+        if (_historySelected.has(id)) {
+          _historySelected.delete(id);
+          _historySelectedData.delete(id);
+          card.classList.remove("checked");
+        } else {
+          _historySelected.add(id);
+          _historySelectedData.set(id, { merchant: r.merchant, purchase_date: r.purchase_date, total: r.total });
+          card.classList.add("checked");
+        }
+        _updateDeleteHeader();
+      } else {
+        const isExpanded = card.classList.contains("expanded");
+        card.classList.toggle("expanded");
+        if (!isExpanded && !detail.dataset.loaded) {
+          _loadReceiptDetail(r.id, detail);
+        }
+        if (!isExpanded) {
+          setTimeout(() => card.scrollIntoView({ behavior: "smooth", block: "nearest" }), 50);
+        }
+      }
+    });
+
+    return card;
+  }
+
+  async function _loadReceiptDetail(receiptId, detailEl) {
+    detailEl.innerHTML = '<p style="font-size:0.8rem;color:#a89f8f;padding:4px 0">불러오는 중…</p>';
+    try {
+      const data = await fetch(
+        `/grocery/receipt/${receiptId}`
+      ).then(r => r.json());
+      detailEl.innerHTML = "";
+      detailEl.dataset.loaded = "1";
+      _renderReceiptDetail(data, detailEl);
+    } catch (err) {
+      detailEl.innerHTML = `<p style="font-size:0.8rem;color:#b3402e">오류: ${err.message}</p>`;
+    }
+  }
+
+  function _renderReceiptDetail(data, el) {
+    const fmt = n => {
+      if (n == null) return "—";
+      const s = Math.abs(n).toLocaleString("ko-KR") + "원";
+      return n < 0 ? "−" + s : s;
+    };
+    const items = data.items || [];
+    const table = document.createElement("table");
+    table.className = "hrc-items-table";
+    items.forEach(item => {
+      const tr = document.createElement("tr");
+      if (item.is_cancelled) tr.className = "cancelled";
+      else if ((item.amount || 0) < 0) tr.className = "discount";
+      tr.innerHTML = `
+        <td>${_rcptEsc(item.raw_name) || "—"}</td>
+        <td style="text-align:center;color:#b7ae9f;width:28px">${(item.qty || 1) > 1 ? item.qty : ""}</td>
+        <td>${fmt(item.amount)}</td>
+      `;
+      table.appendChild(tr);
+    });
+    el.appendChild(table);
+    if (data.total != null) {
+      const totalRow = document.createElement("div");
+      totalRow.className = "hrc-total-row";
+      totalRow.innerHTML = `<span>합계</span><span>${fmt(data.total)}</span>`;
+      el.appendChild(totalRow);
+    }
+    if (data.created_at) {
+      const createdDiv = document.createElement("div");
+      createdDiv.style.cssText = "font-size: 0.75rem;color:#b7ae9f;margin-top:8px;text-align:right";
+      createdDiv.textContent = `저장: ${data.created_at.substring(0, 16).replace("T", " ")}`;
+      el.appendChild(createdDiv);
+    }
+  }
+
+  loadInfo();
+
+  // ── 이전 대화 이력 복원 ──
+  async function loadChatHistory() {
+    try {
+      const msgs = await fetch(`/chat/history?session_id=${SESSION_ID}`).then(r => r.json());
+      if (!msgs || msgs.length === 0) return;
+      msgs.forEach(msg => {
+        const { row, bubble } = addBubble(msg.role);
+        if (msg.role === "user") {
+          bubble.textContent = msg.content;
+        } else {
+          renderMarkdown(bubble, msg.content);
+        }
+      });
+      chatWrap.scrollTop = chatWrap.scrollHeight;
+    } catch {}
+  }
+  loadChatHistory();
+
+  // ── 세션 내 저장 영수증 누적 (세션 스토리지) ──
+  function _accumulateSessionReceipts(receipts) {
+    try {
+      const prev = JSON.parse(sessionStorage.getItem("sessionSavedReceipts") || "[]");
+      sessionStorage.setItem("sessionSavedReceipts", JSON.stringify([...prev, ...receipts]));
+    } catch(e) {}
+  }
+  function _getSessionReceipts() {
+    try { return JSON.parse(sessionStorage.getItem("sessionSavedReceipts") || "[]"); } catch(e) { return []; }
+  }
+
+  // ── grocery_saved 자동 요약 ──
+  const _params = new URLSearchParams(window.location.search);
+  if (_params.get("grocery_saved")) {
+    history.replaceState({}, "", "/chat");
+
+    // 구/신 포맷 모두 지원
+    let _receipts = [];
+    try {
+      const _raw = sessionStorage.getItem("pendingReceipts") || sessionStorage.getItem("pendingReceipt");
+      if (_raw) {
+        const _parsed = JSON.parse(_raw);
+        _receipts = Array.isArray(_parsed) ? _parsed : [_parsed];
+      }
+    } catch(e) {}
+    sessionStorage.removeItem("pendingReceipts");
+    sessionStorage.removeItem("pendingReceipt");
+
+    if (_receipts.length > 0) _accumulateSessionReceipts(_receipts);
+
+    setTimeout(() => {
+      if (_receipts.length > 0) {
+        renderReceiptsIntoChat(_receipts);
+      }
+
+      const _summary = _receipts.map(r => {
+        const items = (r.items||[]).filter(i=>!i.is_cancelled && i.amount != null && i.amount > 0);
+        const discounts = (r.items||[]).filter(i=>!i.is_cancelled && i.amount != null && i.amount < 0);
+        const discTotal = discounts.reduce((s,i)=>s+i.amount,0);
+        const lines = items.map(i=>`  - ${i.raw_name}: ${(i.amount||0).toLocaleString("ko-KR")}원`).join("\n");
+        const discLine = discTotal<0 ? `\n  할인: ${discTotal.toLocaleString("ko-KR")}원` : "";
+        const totalLine = r.total ? `\n  합계: ${r.total.toLocaleString("ko-KR")}원` : "";
+        return `[${r.merchant||"알 수 없음"} · ${r.purchase_date||"날짜 미상"}]\n${lines}${discLine}${totalLine}`;
+      }).join("\n\n");
+
+      const msg = `[방금 저장한 영수증]\n${_summary}\n\n이 구매에서 특별히 메모하거나 확인하고 싶은 게 있나요?`;
+      sendText(msg);
+    }, 400);
+  }
+
+  // URL param: ?panel=history|weekly → auto-open overlay
+  const _urlPanel = new URLSearchParams(location.search).get("panel");
+  if (_urlPanel === "history") openHistoryPanel();
+  else if (_urlPanel === "weekly") openWeeklyPanel();
+</script>
+</body>
+</html>
