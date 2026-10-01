@@ -1,0 +1,13 @@
+{
+  "appId": "kr.mo.opensimul",
+  "appName": "OpenSimul",
+  "webDir": "www",
+  "server": {
+    "url": "https://YOUR-DOMAIN-HERE.example.com",
+    "allowNavigation": ["YOUR-DOMAIN-HERE.example.com"],
+    "cleartext": false
+  },
+  "ios": {
+    "contentInset": "automatic"
+  }
+}

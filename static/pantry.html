@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>재고 관리</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,
+                   "Apple SD Gothic Neo", "Segoe UI", "Noto Sans KR", sans-serif;
+      background: #efece5;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 16px 48px;
+    }
+    h1 { font-size: 1.1rem; font-weight: 600; color: #26221c; margin-bottom: 4px; }
+    .subtitle { font-size: 0.78rem; color: #8d8474; margin-bottom: 16px; }
+
+    .grocery-topbar {
+      width: 100%; max-width: 600px;
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 20px;
+    }
+    .topbar-right { display: flex; align-items: center; gap: 8px; }
+    #user-bar-code { font-size: 0.8rem; color: #5d5548; }
+
+    #g-hamburger-btn {
+      background: none; border: none; cursor: pointer;
+      font-size: 1.2rem; padding: 4px 8px; border-radius: 2px; color: #3a332b;
+    }
+    #g-hamburger-btn:hover { background: #ece7db; }
+    #g-hamburger-menu {
+      display: none; position: fixed; top: 40px; left: 12px;
+      background: #faf8f3; border: 1px solid #ddd6c8; border-radius: 3px;
+      box-shadow: 0 4px 16px rgba(38,34,28,0.12); padding: 6px 0;
+      z-index: 1000; min-width: 140px;
+    }
+    #g-hamburger-menu.open { display: block; }
+    .g-hmenu-item {
+      display: block; padding: 10px 18px; width: 100%;
+      font-size: 0.88rem; color: #3a332b; text-decoration: none;
+      background: none; border: none; border-bottom: 1px solid #f0ebe0;
+      text-align: left; cursor: pointer; font-family: inherit;
+    }
+    .g-hmenu-item:last-child { border-bottom: none; }
+    .g-hmenu-item:hover { background: #efece5; }
+
+    /* 탭 바 */
+    .tab-bar {
+      width: 100%; max-width: 600px;
+      display: flex; gap: 0;
+      background: #faf8f3; border-radius: 4px;
+      box-shadow: 0 1px 4px rgba(38,34,28,0.08);
+      margin-bottom: 16px; overflow: hidden;
+    }
+    .tab-btn {
+      flex: 1; padding: 11px 0;
+      font-size: 0.88rem; font-weight: 500; color: #8d8474;
+      background: none; border: none; cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .tab-btn.active { color: #b3402e; border-bottom-color: #b3402e; }
+    .tab-btn:hover:not(.active) { color: #5d5548; background: #f3efe6; }
+
+    #add-btn {
+      width: 100%; max-width: 600px;
+      padding: 10px; margin-bottom: 16px;
+      background: #b3402e; color: #faf8f3; border: none; border-radius: 3px;
+      font-size: 0.9rem; font-weight: 500; cursor: pointer;
+    }
+    #add-btn:hover { background: #9a3527; }
+
+    .pantry-card {
+      width: 100%; max-width: 600px;
+      background: #faf8f3; border-radius: 4px;
+      box-shadow: 0 1px 4px rgba(38,34,28,0.08); overflow: hidden;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      background: #efece5; font-size: 0.78rem; color: #8d8474;
+      font-weight: 600; padding: 10px 14px; text-align: left;
+      border-bottom: 1px solid #ddd6c8;
+    }
+    td { padding: 12px 14px; border-bottom: 1px solid #ece7db; font-size: 0.88rem; vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #f3efe6; }
+    .qty-cell { font-weight: 600; color: #26221c; white-space: nowrap; }
+    .qty-sep { font-weight: 400; color: #b7ae9f; margin: 0 1px; }
+    .qty-unit { font-size: 0.75rem; color: #8d8474; }
+    .current-low { color: #b3402e; }
+    .date-cell { font-size: 0.75rem; color: #a89f8f; white-space: nowrap; }
+    .action-cell { text-align: right; }
+    .action-stack { display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
+    .btn-edit, .btn-del {
+      border: none; border-radius: 2px; cursor: pointer;
+      font-size: 0.75rem; padding: 4px 10px;
+    }
+    .btn-edit { background: #e7e9df; color: #2b5d73; }
+    .btn-edit:hover { background: #dce0d3; }
+    .btn-del { background: #f5e7e2; color: #b3402e; }
+    .btn-del:hover { background: #eed6cd; }
+
+    /* 이력 탭 흐리게 */
+    #tab-history-panel .qty-cell { color: #b7ae9f; }
+    #tab-history-panel td { color: #9b9283; }
+
+    .empty-msg {
+      width: 100%; max-width: 600px; text-align: center;
+      padding: 48px 16px; color: #a89f8f; font-size: 0.88rem;
+    }
+
+    #edit-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(38,34,28,0.4); z-index: 900;
+      align-items: center; justify-content: center;
+    }
+    #edit-overlay.visible { display: flex; }
+    #edit-modal {
+      background: #faf8f3; border-radius: 4px; padding: 24px 20px;
+      width: 320px; max-width: 92vw;
+      box-shadow: 0 8px 32px rgba(38,34,28,0.18);
+    }
+    .edit-title { font-size: 1rem; font-weight: 600; margin-bottom: 16px; }
+    .edit-label { font-size: 0.75rem; color: #8d8474; margin-bottom: 4px; }
+    .edit-row { display: flex; gap: 8px; margin-top: 10px; }
+    .edit-field {
+      flex: 1; padding: 9px 12px;
+      border: 1px solid #cfc7b6; border-radius: 3px;
+      font-size: 0.88rem; color: #26221c; width: 100%;
+    }
+    .edit-field:focus { outline: none; border-color: #b3402e; }
+    .edit-actions { display: flex; gap: 8px; margin-top: 16px; }
+    .edit-save { flex: 1; background: #b3402e; color: #faf8f3; border: none; border-radius: 3px; padding: 10px; font-size: 0.88rem; cursor: pointer; }
+    .edit-save:hover { background: #9a3527; }
+    .edit-cancel { flex: 1; background: #ece7db; color: #5d5548; border: none; border-radius: 3px; padding: 10px; font-size: 0.88rem; cursor: pointer; }
+    .edit-cancel:hover { background: #ddd6c8; }
+
+    #auth-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(38,34,28,0.5); z-index: 1100;
+      align-items: center; justify-content: center;
+    }
+    #auth-overlay.visible { display: flex; }
+    #auth-modal {
+      background: #faf8f3; border-radius: 4px; padding: 28px 24px;
+      width: 320px; max-width: 92vw;
+      box-shadow: 0 8px 32px rgba(38,34,28,0.18);
+    }
+    .auth-title { font-size: 1.05rem; font-weight: 600; text-align: center; margin-bottom: 16px; }
+    .auth-tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+    .auth-tab {
+      flex: 1; padding: 8px; border: 1px solid #cfc7b6; border-radius: 3px;
+      background: #f3efe6; color: #5d5548; cursor: pointer; font-size: 0.85rem;
+    }
+    .auth-tab.active { background: #b3402e; color: #faf8f3; border-color: #b3402e; }
+    .auth-field {
+      display: block; width: 100%; padding: 10px 12px; margin-bottom: 10px;
+      border: 1px solid #cfc7b6; border-radius: 3px; font-size: 0.88rem;
+    }
+    .auth-field:focus { outline: none; border-color: #b3402e; }
+    #auth-submit-btn {
+      width: 100%; padding: 11px; background: #b3402e; color: #faf8f3;
+      border: none; border-radius: 3px; font-size: 0.9rem; cursor: pointer; font-weight: 500;
+    }
+    #auth-submit-btn:hover:not(:disabled) { background: #9a3527; }
+    #auth-submit-btn:disabled { background: #d9b0a6; cursor: not-allowed; }
+    #auth-error-msg { font-size: 0.78rem; color: #b3402e; text-align: center; margin-top: 8px; min-height: 18px; }
+    .auth-hint { font-size: 0.75rem; color: #a89f8f; text-align: center; margin-top: 14px; }
+  </style>
+</head>
+<body>
+
+<div id="g-hamburger-menu">
+  <a href="/chat" class="g-hmenu-item">대화하기</a>
+  <a href="/grocery" class="g-hmenu-item">영수증 분석기</a>
+  <a href="/pantry" class="g-hmenu-item">재고 관리</a>
+  <a href="/trash" class="g-hmenu-item">데이터 관리</a>
+  <hr style="margin:4px 0;border:none;border-top:1px solid #e5dfd1">
+  <a href="/chat?panel=history" class="g-hmenu-item">영수증 이력</a>
+  <a href="/chat?panel=weekly" class="g-hmenu-item">주간 지출 분석</a>
+  <hr style="margin:4px 0;border:none;border-top:1px solid #e5dfd1">
+  <button id="ghm-logout-btn" class="g-hmenu-item" style="color:#b3402e;">로그아웃</button>
+</div>
+
+<div class="grocery-topbar">
+  <button id="g-hamburger-btn" title="메뉴">☰</button>
+  <div class="topbar-right">
+    <span id="user-bar-code"></span>
+  </div>
+</div>
+
+<h1>재고 관리</h1>
+<p class="subtitle">영수증 저장 시 자동으로 추가됩니다</p>
+
+<div class="tab-bar">
+  <button class="tab-btn active" id="tab-stock-btn">재고 관리</button>
+  <button class="tab-btn" id="tab-history-btn">재고 이력</button>
+</div>
+
+<!-- 재고 관리 탭 -->
+<div id="tab-stock-panel">
+  <button id="add-btn">+ 직접 추가</button>
+  <div class="pantry-card" id="stock-card">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:auto">품목</th>
+          <th style="width:80px">수량</th>
+          <th style="width:52px">등록일</th>
+          <th style="width:52px"></th>
+        </tr>
+      </thead>
+      <tbody id="pantry-body"></tbody>
+    </table>
+  </div>
+  <div class="empty-msg" id="stock-empty" style="display:none">재고 항목이 없습니다.<br>영수증을 저장하면 자동으로 추가됩니다.</div>
+</div>
+
+<!-- 재고 이력 탭 -->
+<div id="tab-history-panel" style="display:none; width:100%; max-width:600px;">
+  <div class="pantry-card" id="history-card">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:auto">품목</th>
+          <th style="width:80px">수량</th>
+          <th style="width:52px">등록일</th>
+          <th style="width:52px"></th>
+        </tr>
+      </thead>
+      <tbody id="history-body"></tbody>
+    </table>
+  </div>
+  <div class="empty-msg" id="history-empty" style="display:none">소진된 항목이 없습니다.</div>
+</div>
+
+<div id="edit-overlay">
+  <div id="edit-modal">
+    <p class="edit-title" id="edit-modal-title">품목 수정</p>
+    <div>
+      <p class="edit-label">품목명</p>
+      <input id="edit-name" class="edit-field" placeholder="예: 계란" />
+    </div>
+    <div class="edit-row">
+      <div style="flex:1">
+        <p class="edit-label">전체 수량</p>
+        <input id="edit-total" class="edit-field" type="number" min="0" placeholder="30" />
+      </div>
+      <div style="flex:1">
+        <p class="edit-label">현재 수량</p>
+        <input id="edit-current" class="edit-field" type="number" min="0" placeholder="27" />
+      </div>
+      <div style="flex:1">
+        <p class="edit-label">단위</p>
+        <input id="edit-unit" class="edit-field" placeholder="개" />
+      </div>
+    </div>
+    <div class="edit-actions">
+      <button class="edit-save" id="edit-save-btn">저장</button>
+      <button class="edit-cancel" id="edit-cancel-btn">취소</button>
+    </div>
+  </div>
+</div>
+
+<div id="auth-overlay">
+  <div id="auth-modal">
+    <p class="auth-title">재고 관리</p>
+    <div class="auth-tabs">
+      <button id="tab-login" class="auth-tab active">로그인</button>
+      <button id="tab-register" class="auth-tab">회원가입</button>
+    </div>
+    <input id="auth-code-input" class="auth-field" type="text" placeholder="사용자 코드 (예: family01)" maxlength="30" autocomplete="username" />
+    <input id="auth-pass-input" class="auth-field" type="password" placeholder="비밀번호" maxlength="100" autocomplete="current-password" />
+    <button id="auth-submit-btn">로그인</button>
+    <p id="auth-error-msg"></p>
+    <p class="auth-hint">코드는 가족끼리 공유할 수 있어요 🏠</p>
+  </div>
+</div>
+
+<script src="/static/native.js"></script>
+<script src="/static/common.js"></script>
+<script>
+  let editingId = null;
+  let activeTab = "stock";
+
+  // 탭 전환
+  document.getElementById("tab-stock-btn").addEventListener("click", () => switchTab("stock"));
+  document.getElementById("tab-history-btn").addEventListener("click", () => switchTab("history"));
+
+  function switchTab(tab) {
+    activeTab = tab;
+    document.getElementById("tab-stock-btn").classList.toggle("active", tab === "stock");
+    document.getElementById("tab-history-btn").classList.toggle("active", tab === "history");
+    document.getElementById("tab-stock-panel").style.display   = tab === "stock"   ? "" : "none";
+    document.getElementById("tab-history-panel").style.display = tab === "history" ? "" : "none";
+  }
+
+  let _items = [];
+
+  async function loadPantry() {
+    if (!USER_ID) return;
+    try {
+      const res = await fetch(`/pantry/items`);
+      _items = await res.json();
+      renderTable();
+    } catch (e) { console.error(e); }
+  }
+
+
+  function renderTable() {
+    const tbody    = document.getElementById("pantry-body");
+    const histBody = document.getElementById("history-body");
+    tbody.innerHTML    = "";
+    histBody.innerHTML = "";
+
+    const active  = _items.filter(i => i.current_qty > 0);
+    const history = _items.filter(i => i.current_qty === 0);
+
+    // 재고 관리 탭
+    const stockCard  = document.getElementById("stock-card");
+    const stockEmpty = document.getElementById("stock-empty");
+    if (active.length) {
+      stockCard.style.display  = "";
+      stockEmpty.style.display = "none";
+      for (const item of active) {
+        const unit     = esc(item.unit || "개");
+        const lowStock = item.total_qty > 0 && item.current_qty <= Math.floor(item.total_qty * 0.2);
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${esc(item.raw_name)}</td>
+          <td class="qty-cell${lowStock ? " current-low" : ""}">
+            ${item.current_qty}<span class="qty-sep">/</span>${item.total_qty}<span class="qty-unit">${unit}</span>
+          </td>
+          <td class="date-cell">${fmtDate(item.created_at)}</td>
+          <td class="action-cell">
+            <div class="action-stack">
+              <button class="btn-edit" data-id="${item.id}">수정</button>
+              <button class="btn-del"  data-id="${item.id}">삭제</button>
+            </div>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      }
+    } else {
+      stockCard.style.display  = "none";
+      stockEmpty.style.display = "";
+    }
+
+    // 재고 이력 탭
+    const histCard  = document.getElementById("history-card");
+    const histEmpty = document.getElementById("history-empty");
+    if (history.length) {
+      histCard.style.display  = "";
+      histEmpty.style.display = "none";
+      for (const item of history) {
+        const unit = esc(item.unit || "개");
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${esc(item.raw_name)}</td>
+          <td class="qty-cell">0<span class="qty-sep">/</span>${item.total_qty}<span class="qty-unit">${unit}</span></td>
+          <td class="date-cell">${fmtDate(item.created_at)}</td>
+          <td class="action-cell">
+            <div class="action-stack">
+              <button class="btn-del" data-id="${item.id}">삭제</button>
+            </div>
+          </td>
+        `;
+        histBody.appendChild(tr);
+      }
+    } else {
+      histCard.style.display  = "none";
+      histEmpty.style.display = "";
+    }
+
+    tbody.querySelectorAll(".btn-edit").forEach(b => b.addEventListener("click", () => openEdit(+b.dataset.id)));
+    document.querySelectorAll(".btn-del").forEach(b => b.addEventListener("click", () => delItem(+b.dataset.id)));
+  }
+
+  function esc(s) {
+    return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  function openEdit(id) {
+    editingId = id;
+    const item = _items.find(i => i.id === id);
+    document.getElementById("edit-modal-title").textContent = "품목 수정";
+    document.getElementById("edit-name").value    = item.raw_name;
+    document.getElementById("edit-total").value   = item.total_qty;
+    document.getElementById("edit-current").value = item.current_qty;
+    document.getElementById("edit-unit").value    = item.unit || "개";
+    document.getElementById("edit-overlay").classList.add("visible");
+  }
+
+  function openAdd() {
+    editingId = null;
+    document.getElementById("edit-modal-title").textContent = "품목 추가";
+    document.getElementById("edit-name").value    = "";
+    document.getElementById("edit-total").value   = "";
+    document.getElementById("edit-current").value = "";
+    document.getElementById("edit-unit").value    = "개";
+    document.getElementById("edit-overlay").classList.add("visible");
+  }
+
+  function closeEdit() { document.getElementById("edit-overlay").classList.remove("visible"); }
+
+  document.getElementById("add-btn").addEventListener("click", openAdd);
+  document.getElementById("edit-cancel-btn").addEventListener("click", closeEdit);
+  document.getElementById("edit-overlay").addEventListener("click", e => {
+    if (e.target === document.getElementById("edit-overlay")) closeEdit();
+  });
+
+  document.getElementById("edit-save-btn").addEventListener("click", async () => {
+    const name    = document.getElementById("edit-name").value.trim();
+    const total   = parseInt(document.getElementById("edit-total").value)   || 0;
+    const current = parseInt(document.getElementById("edit-current").value) || 0;
+    const unit    = document.getElementById("edit-unit").value.trim() || "개";
+    if (!name) { alert("품목명을 입력하세요."); return; }
+
+    if (editingId === null) {
+      await fetch("/pantry/items", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ raw_name: name, total_qty: total, current_qty: current, unit }),
+      });
+    } else {
+      await fetch(`/pantry/items/${editingId}`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ raw_name: name, total_qty: total, current_qty: current, unit }),
+      });
+    }
+    closeEdit();
+    loadPantry();
+  });
+
+  async function delItem(id) {
+    if (!confirm("삭제할까요?")) return;
+    await fetch(`/pantry/items/${id}`, { method: "DELETE" });
+    loadPantry();
+  }
+
+  initCommonUI({ onLogin: loadPantry });
+</script>
+</body>
+</html>
