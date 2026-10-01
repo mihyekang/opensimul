@@ -98,6 +98,7 @@ def init_db() -> None:
                     created_at    TIMESTAMPTZ DEFAULT NOW()
                 )
             """)
+            cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS recovery_hash TEXT")
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS pantry_items (
                     id          SERIAL PRIMARY KEY,
@@ -833,6 +834,63 @@ def register_user(user_code: str, password: str) -> bool:
         return True
     except psycopg2.errors.UniqueViolation:
         return False
+
+
+# ── 비밀번호 복구 코드 ───────────────────────────────────────────────────────────
+
+# 혼동하기 쉬운 문자(0/O, 1/I/L) 제외 — 손으로 옮겨 적어도 오타가 덜 나도록
+_RECOVERY_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+
+
+def _generate_recovery_code() -> str:
+    raw = "".join(secrets.choice(_RECOVERY_ALPHABET) for _ in range(16))
+    return "-".join(raw[i:i + 4] for i in range(0, 16, 4))
+
+
+def _normalize_recovery_code(code: str) -> str:
+    return "".join(c for c in code.upper() if c.isalnum())
+
+
+def issue_recovery_code(user_code: str) -> str | None:
+    """새 복구 코드를 발급해 해시만 저장하고 평문을 반환. 사용자가 없으면 None.
+    이전 코드는 즉시 무효화된다."""
+    code = _generate_recovery_code()
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE users SET recovery_hash = %s WHERE user_code = %s",
+                (_hash_password(_normalize_recovery_code(code)), user_code),
+            )
+            updated = cur.rowcount
+        conn.commit()
+    return code if updated else None
+
+
+def reset_password_with_recovery(user_code: str, recovery_code: str, new_password: str) -> str | None:
+    """복구 코드가 맞으면 비밀번호를 바꾸고, 복구 코드를 새로 발급(1회용)하고,
+    기존 로그인 세션을 모두 끊는다. 성공 시 새 복구 코드, 실패 시 None."""
+    normalized = _normalize_recovery_code(recovery_code)
+    if not normalized:
+        return None
+    with _get_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                "SELECT recovery_hash FROM users WHERE user_code = %s FOR UPDATE",
+                (user_code,),
+            )
+            row = cur.fetchone()
+            if not row or not row.get("recovery_hash"):
+                return None
+            if not _verify_password(normalized, row["recovery_hash"]):
+                return None
+            new_code = _generate_recovery_code()
+            cur.execute(
+                "UPDATE users SET password_hash = %s, recovery_hash = %s WHERE user_code = %s",
+                (_hash_password(new_password), _hash_password(_normalize_recovery_code(new_code)), user_code),
+            )
+            cur.execute("DELETE FROM user_sessions WHERE user_code = %s", (user_code,))
+        conn.commit()
+    return new_code
 
 
 # ── trash bin ──────────────────────────────────────────────────────────────────

@@ -202,3 +202,95 @@ class TestSessionCheck:
         with patch("db.get_user_from_session", return_value=None):
             resp = client.get("/auth/session")
         assert resp.json()["user_id"] == ""
+
+
+# ── 비밀번호 복구 ─────────────────────────────────────────────────────────────
+
+class TestRegisterIssuesRecoveryCode:
+    def test_register_returns_recovery_code(self, client):
+        with patch("db.register_user", return_value=True), \
+             patch("db.issue_recovery_code", return_value="AB12-CD34-EF56-GH78") as mock_issue, \
+             patch("db.create_user_session", return_value="tok_new"):
+            resp = client.post("/auth/register", json={"user_code": "newuser", "password": "TestPass1"})
+        assert resp.json()["recovery_code"] == "AB12-CD34-EF56-GH78"
+        mock_issue.assert_called_once_with("newuser")
+
+    def test_duplicate_register_issues_no_code(self, client):
+        with patch("db.register_user", return_value=False), \
+             patch("db.issue_recovery_code") as mock_issue:
+            resp = client.post("/auth/register", json={"user_code": "existing", "password": "TestPass1"})
+        assert "recovery_code" not in resp.json()
+        mock_issue.assert_not_called()
+
+
+class TestRecover:
+    BODY = {"user_code": "alice", "recovery_code": "AB12-CD34-EF56-GH78", "new_password": "NewPass99"}
+
+    def test_success_logs_in_and_returns_new_code(self, client):
+        with patch("db.reset_password_with_recovery", return_value="NEW1-NEW2-NEW3-NEW4") as mock_reset, \
+             patch("db.create_user_session", return_value="tok_rec"):
+            resp = client.post("/auth/recover", json=self.BODY)
+        assert resp.status_code == 200
+        assert resp.json() == {"ok": True, "user_code": "alice", "recovery_code": "NEW1-NEW2-NEW3-NEW4"}
+        assert resp.cookies.get("sid") == "tok_rec"
+        mock_reset.assert_called_once_with("alice", "AB12-CD34-EF56-GH78", "NewPass99")
+
+    def test_wrong_code_returns_invalid_without_cookie(self, client):
+        with patch("db.reset_password_with_recovery", return_value=None):
+            resp = client.post("/auth/recover", json=self.BODY)
+        assert resp.json()["ok"] is False
+        assert resp.json()["reason"] == "invalid"
+        assert "sid" not in resp.cookies
+
+    def test_weak_new_password_returns_422(self, client):
+        resp = client.post("/auth/recover", json={**self.BODY, "new_password": "alllowercase1"})
+        assert resp.status_code == 422
+
+    def test_blocks_after_max_attempts(self, client):
+        with patch("db.reset_password_with_recovery", return_value=None):
+            for _ in range(5):
+                client.post("/auth/recover", json=self.BODY)
+            resp = client.post("/auth/recover", json=self.BODY)
+        assert resp.status_code == 429
+
+    def test_recover_limit_independent_of_login_limit(self, client):
+        """로그인 실패가 쌓여도 복구 시도는 별도로 허용(복구가 바로 그 상황을 위한 수단)."""
+        with patch("db.login_user", return_value=False):
+            for _ in range(5):
+                client.post("/auth/login", json={"user_code": "alice", "password": "x"})
+        with patch("db.reset_password_with_recovery", return_value=None):
+            resp = client.post("/auth/recover", json=self.BODY)
+        assert resp.status_code == 200
+
+    def test_db_disabled_returns_503(self, reset_app_state):
+        from app import app
+        from fastapi.testclient import TestClient
+        from unittest.mock import MagicMock
+
+        mock_config = MagicMock()
+        mock_config.verify_ssl = False
+        with patch("app.ClientConfig", return_value=mock_config), \
+             patch("app.fetch_usd_to_krw", return_value=(1300.0, "test")):
+            with TestClient(app) as c:
+                resp = c.post("/auth/recover", json=self.BODY)
+        assert resp.status_code == 503
+
+
+class TestIssueRecoveryCodeLoggedIn:
+    def test_requires_login(self, client):
+        resp = client.post("/auth/recovery-code", json={"password": "TestPass1"})
+        assert resp.status_code == 401
+
+    def test_correct_password_issues_code(self, authed_client):
+        with patch("db.login_user", return_value=True) as mock_login, \
+             patch("db.issue_recovery_code", return_value="AB12-CD34-EF56-GH78"):
+            resp = authed_client.post("/auth/recovery-code", json={"password": "TestPass1"})
+        assert resp.json() == {"ok": True, "recovery_code": "AB12-CD34-EF56-GH78"}
+        mock_login.assert_called_once_with("testuser", "TestPass1")
+
+    def test_wrong_password_issues_nothing(self, authed_client):
+        with patch("db.login_user", return_value=False), \
+             patch("db.issue_recovery_code") as mock_issue:
+            resp = authed_client.post("/auth/recovery-code", json={"password": "wrong"})
+        assert resp.json() == {"ok": False, "reason": "invalid"}
+        mock_issue.assert_not_called()

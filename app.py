@@ -157,6 +157,12 @@ class AuthRequest(BaseModel):
     password: str = Field(min_length=1, max_length=128)
 
 
+def _require_password_complexity(v: str) -> str:
+    if not any(c.islower() for c in v) or not any(c.isupper() for c in v):
+        raise ValueError("비밀번호는 대문자와 소문자를 포함해야 합니다")
+    return v
+
+
 class RegisterRequest(BaseModel):
     user_code: str = Field(min_length=1, max_length=64)
     password: str = Field(min_length=8, max_length=128)
@@ -164,9 +170,22 @@ class RegisterRequest(BaseModel):
     @field_validator("password")
     @classmethod
     def _check_password_complexity(cls, v: str) -> str:
-        if not any(c.islower() for c in v) or not any(c.isupper() for c in v):
-            raise ValueError("비밀번호는 대문자와 소문자를 포함해야 합니다")
-        return v
+        return _require_password_complexity(v)
+
+
+class RecoverRequest(BaseModel):
+    user_code: str = Field(min_length=1, max_length=64)
+    recovery_code: str = Field(min_length=1, max_length=64)
+    new_password: str = Field(min_length=8, max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def _check_password_complexity(cls, v: str) -> str:
+        return _require_password_complexity(v)
+
+
+class RecoveryCodeRequest(BaseModel):
+    password: str = Field(min_length=1, max_length=128)
 
 
 class SpellCheckRequest(BaseModel):
@@ -1216,6 +1235,7 @@ class RateLimiter:
 
 
 _rate_limiter = RateLimiter(max_attempts=_LOGIN_MAX_ATTEMPTS, window_seconds=_LOGIN_WINDOW_SECONDS)
+_recover_limiter = RateLimiter(max_attempts=_LOGIN_MAX_ATTEMPTS, window_seconds=_LOGIN_WINDOW_SECONDS)
 
 
 @app.post("/auth/login")
@@ -1243,9 +1263,50 @@ async def auth_register(req: RegisterRequest, response: Response):
     ok = await loop.run_in_executor(None, lambda: db.register_user(req.user_code, req.password))
     if not ok:
         return {"ok": False, "user_code": None, "reason": "already_exists"}
+    recovery_code = await loop.run_in_executor(None, lambda: db.issue_recovery_code(req.user_code))
     token = await loop.run_in_executor(None, lambda: db.create_user_session(req.user_code))
     response.set_cookie("sid", token, **_COOKIE_OPTS)
-    return {"ok": True, "user_code": req.user_code}
+    return {"ok": True, "user_code": req.user_code, "recovery_code": recovery_code}
+
+
+@app.post("/auth/recover")
+async def auth_recover(req: RecoverRequest, response: Response):
+    """복구 코드로 비밀번호 재설정. 성공 시 바로 로그인되고 새 복구 코드를 돌려준다."""
+    if not state.db_enabled:
+        raise HTTPException(status_code=503, detail="auth_unavailable")
+    if not _recover_limiter.is_allowed(req.user_code):
+        raise HTTPException(status_code=429, detail="too_many_attempts")
+    loop = asyncio.get_event_loop()
+    new_code = await loop.run_in_executor(
+        None, lambda: db.reset_password_with_recovery(req.user_code, req.recovery_code, req.new_password)
+    )
+    if not new_code:
+        _recover_limiter.record_failure(req.user_code)
+        return {"ok": False, "user_code": None, "reason": "invalid"}
+    _recover_limiter.clear(req.user_code)
+    _rate_limiter.clear(req.user_code)
+    token = await loop.run_in_executor(None, lambda: db.create_user_session(req.user_code))
+    response.set_cookie("sid", token, **_COOKIE_OPTS)
+    return {"ok": True, "user_code": req.user_code, "recovery_code": new_code}
+
+
+@app.post("/auth/recovery-code")
+async def auth_recovery_code(req: RecoveryCodeRequest, user_id: str = Depends(get_current_user)):
+    """로그인한 사용자가 현재 비밀번호를 확인받고 복구 코드를 새로 발급(기존 코드는 무효화)."""
+    if not user_id:
+        raise HTTPException(status_code=401, detail="unauthorized")
+    if not state.db_enabled:
+        raise HTTPException(status_code=503, detail="auth_unavailable")
+    if not _rate_limiter.is_allowed(user_id):
+        raise HTTPException(status_code=429, detail="too_many_attempts")
+    loop = asyncio.get_event_loop()
+    ok = await loop.run_in_executor(None, lambda: db.login_user(user_id, req.password))
+    if not ok:
+        _rate_limiter.record_failure(user_id)
+        return {"ok": False, "reason": "invalid"}
+    _rate_limiter.clear(user_id)
+    code = await loop.run_in_executor(None, lambda: db.issue_recovery_code(user_id))
+    return {"ok": True, "recovery_code": code}
 
 
 @app.post("/auth/logout")
@@ -1279,3 +1340,4 @@ def _reset_for_testing(db_enabled: bool = False) -> None:
     state.usd_to_krw = 1300.0
     state.rate_date = "test"
     _rate_limiter.reset_all()
+    _recover_limiter.reset_all()

@@ -223,3 +223,55 @@ def _raising_cursor(exc_class):
     cur = MockCursor()
     cur.execute.side_effect = exc_class()
     return cur
+
+
+# ── 비밀번호 복구 코드 ────────────────────────────────────────────────────────
+
+class TestRecoveryCode:
+    def test_generated_code_format(self):
+        code = db._generate_recovery_code()
+        groups = code.split("-")
+        assert len(groups) == 4 and all(len(g) == 4 for g in groups)
+        assert all(c in db._RECOVERY_ALPHABET for c in code.replace("-", ""))
+
+    def test_normalize_ignores_case_spaces_and_hyphens(self):
+        assert db._normalize_recovery_code(" ab12-cd34 ef56-GH78 ") == "AB12CD34EF56GH78"
+
+    def test_issue_stores_hash_not_plaintext(self, db_mock):
+        cur, = cursor_sequence(db_mock, {"rowcount": 1})
+        code = db.issue_recovery_code("alice")
+        assert code is not None
+        stored_hash = cur.execute.call_args.args[1][0]
+        assert code not in stored_hash
+        assert db._verify_password(db._normalize_recovery_code(code), stored_hash)
+        db_mock.commit.assert_called_once()
+
+    def test_issue_unknown_user_returns_none(self, db_mock):
+        cursor_sequence(db_mock, {"rowcount": 0})
+        assert db.issue_recovery_code("ghost") is None
+
+    def test_reset_with_correct_code_updates_and_revokes_sessions(self, db_mock):
+        stored = db._hash_password("AB12CD34EF56GH78")
+        cur, = cursor_sequence(db_mock, {"is_dict": True, "fetchone": {"recovery_hash": stored}})
+        new_code = db.reset_password_with_recovery("alice", "ab12-cd34-ef56-gh78", "NewPass99")
+        assert new_code is not None and new_code != "AB12-CD34-EF56-GH78"
+        sqls = [c.args[0] for c in cur.execute.call_args_list]
+        assert any("UPDATE users SET password_hash" in s for s in sqls)
+        assert any("DELETE FROM user_sessions" in s for s in sqls)
+        update_args = next(c.args[1] for c in cur.execute.call_args_list if "UPDATE users" in c.args[0])
+        assert db._verify_password("NewPass99", update_args[0])
+        db_mock.commit.assert_called_once()
+
+    def test_reset_with_wrong_code_changes_nothing(self, db_mock):
+        stored = db._hash_password("AB12CD34EF56GH78")
+        cur, = cursor_sequence(db_mock, {"is_dict": True, "fetchone": {"recovery_hash": stored}})
+        assert db.reset_password_with_recovery("alice", "ZZZZ-ZZZZ-ZZZZ-ZZZZ", "NewPass99") is None
+        assert cur.execute.call_count == 1
+        db_mock.commit.assert_not_called()
+
+    def test_reset_user_without_recovery_code_fails(self, db_mock):
+        cursor_sequence(db_mock, {"is_dict": True, "fetchone": {"recovery_hash": None}})
+        assert db.reset_password_with_recovery("alice", "AB12-CD34-EF56-GH78", "NewPass99") is None
+
+    def test_reset_blank_code_fails_without_query(self, db_mock):
+        assert db.reset_password_with_recovery("alice", " - - ", "NewPass99") is None

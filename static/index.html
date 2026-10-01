@@ -968,6 +968,15 @@
     .edit-cancel-btn { flex:1; padding:10px; border:1px solid #ddd6c8; border-radius: 3px; background:#faf8f3; color:#5d5548; font-weight:600; cursor:pointer; font-family:inherit; }
     .edit-save-btn { flex:2; padding:10px; border:none; border-radius: 3px; background:#b3402e; color:#faf8f3; font-weight:600; cursor:pointer; font-family:inherit; }
     .edit-save-btn:hover { background:#9a3527; }
+    .edit-save-btn:disabled { background:#d9b0a6; cursor:not-allowed; }
+    .recovery-desc { font-size:0.82rem; color:#6f6759; line-height:1.6; margin-bottom:14px; }
+    .recovery-error { font-size:0.8rem; color:#b3402e; min-height:1.2em; margin-bottom:10px; }
+    .recovery-code-box {
+      font-family:"SF Mono", ui-monospace, Menlo, Consolas, monospace;
+      font-size:1.15rem; font-weight:700; letter-spacing:0.06em; text-align:center; color:#26221c;
+      background:#efece5; border:2px dashed #cfc7b6; border-radius:3px; padding:14px 8px;
+      margin-bottom:14px; user-select:all; word-break:break-all;
+    }
 
     .hrc-del-btn {
       padding: 4px 10px;
@@ -1032,6 +1041,7 @@
   <hr style="margin:4px 0;border:none;border-top:1px solid #e5dfd1">
   <button id="reset-btn" class="hmenu-item">대화 초기화</button>
   <button id="usage-btn" class="hmenu-item">사용량 확인</button>
+  <button id="recovery-btn" class="hmenu-item">비밀번호 복구 코드</button>
   <hr style="margin:4px 0;border:none;border-top:1px solid #e5dfd1">
   <button id="logout-btn" class="hmenu-item" style="color:#b3402e;">로그아웃</button>
 </div>
@@ -1063,6 +1073,31 @@
 </footer>
 
 <!-- receipt edit modal -->
+<div id="recovery-overlay" style="display:none;position:fixed;inset:0;background:rgba(38,34,28,.45);z-index:2000;align-items:center;justify-content:center;padding:16px;">
+  <div class="edit-modal" style="width:min(94vw,380px)">
+    <div id="recovery-form">
+      <p class="edit-modal-title">비밀번호 복구 코드</p>
+      <p class="recovery-desc">비밀번호를 잊었을 때 로그인 화면의 "비밀번호를 잊으셨나요?"에서 이 코드로 재설정할 수 있어요. 새로 발급하면 이전 코드는 더 이상 쓸 수 없어요.</p>
+      <label class="edit-label" for="recovery-pass-input">본인 확인을 위해 현재 비밀번호를 입력하세요</label>
+      <input id="recovery-pass-input" class="edit-input" type="password" autocomplete="current-password" maxlength="128" style="width:100%;margin-bottom:6px" />
+      <p id="recovery-error" class="recovery-error"></p>
+      <div class="edit-actions">
+        <button id="recovery-cancel-btn" class="edit-cancel-btn" type="button">취소</button>
+        <button id="recovery-submit-btn" class="edit-save-btn" type="button">새 코드 발급</button>
+      </div>
+    </div>
+    <div id="recovery-result" style="display:none">
+      <p class="edit-modal-title">새 복구 코드</p>
+      <p class="recovery-desc">지금 한 번만 보여드려요. 메모나 사진으로 꼭 저장해 두세요.</p>
+      <div id="recovery-code-box" class="recovery-code-box"></div>
+      <div class="edit-actions">
+        <button id="recovery-copy-btn" class="edit-cancel-btn" type="button">복사하기</button>
+        <button id="recovery-done-btn" class="edit-save-btn" type="button">저장했어요</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div id="receipt-edit-overlay" style="display:none;position:fixed;inset:0;background:rgba(38,34,28,.45);z-index:2000;align-items:flex-start;justify-content:center;overflow-y:auto;padding:24px 0;">
   <div class="edit-modal">
     <p class="edit-modal-title">영수증 수정</p>
@@ -1360,6 +1395,76 @@
     e.stopPropagation();
     closeAllPanels();
     resetChat();
+  });
+
+  // ── 비밀번호 복구 코드 발급 ──
+  const recoveryOverlay = document.getElementById("recovery-overlay");
+  const recoveryPassIn  = document.getElementById("recovery-pass-input");
+  const recoveryErr     = document.getElementById("recovery-error");
+  const recoverySubmit  = document.getElementById("recovery-submit-btn");
+
+  function closeRecovery() {
+    recoveryOverlay.style.display = "none";
+    recoveryPassIn.value = "";
+    recoveryErr.textContent = "";
+    document.getElementById("recovery-code-box").textContent = "";
+    document.getElementById("recovery-form").style.display = "";
+    document.getElementById("recovery-result").style.display = "none";
+  }
+
+  document.getElementById("recovery-btn").addEventListener("click", e => {
+    e.stopPropagation();
+    closeAllPanels();
+    closeRecovery();
+    recoveryOverlay.style.display = "flex";
+    recoveryPassIn.focus();
+  });
+  document.getElementById("recovery-cancel-btn").addEventListener("click", closeRecovery);
+  document.getElementById("recovery-done-btn").addEventListener("click", closeRecovery);
+
+  async function issueRecoveryCode() {
+    const password = recoveryPassIn.value;
+    if (!password) { recoveryErr.textContent = "현재 비밀번호를 입력하세요."; return; }
+    recoverySubmit.disabled = true;
+    recoveryErr.textContent = "";
+    try {
+      const resp = await fetch("/auth/recovery-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
+      });
+      if (resp.status === 429) {
+        recoveryErr.textContent = "시도 횟수가 너무 많아요. 15분 뒤에 다시 시도하세요.";
+      } else if (resp.status === 401) {
+        recoveryErr.textContent = "로그인이 만료됐어요. 다시 로그인한 뒤 시도하세요.";
+      } else {
+        const data = await resp.json();
+        if (data.ok && data.recovery_code) {
+          document.getElementById("recovery-code-box").textContent = data.recovery_code;
+          document.getElementById("recovery-form").style.display = "none";
+          document.getElementById("recovery-result").style.display = "";
+        } else {
+          recoveryErr.textContent = "비밀번호가 맞지 않습니다.";
+        }
+      }
+    } catch {
+      recoveryErr.textContent = "네트워크 오류가 발생했습니다.";
+    }
+    recoverySubmit.disabled = false;
+  }
+  recoverySubmit.addEventListener("click", issueRecoveryCode);
+  recoveryPassIn.addEventListener("keydown", e => { if (e.key === "Enter") issueRecoveryCode(); });
+
+  document.getElementById("recovery-copy-btn").addEventListener("click", async e => {
+    const btn = e.currentTarget;
+    const code = document.getElementById("recovery-code-box").textContent;
+    try {
+      await navigator.clipboard.writeText(code);
+      btn.textContent = "복사됨";
+      setTimeout(() => { btn.textContent = "복사하기"; }, 1500);
+    } catch {
+      btn.textContent = "길게 눌러 복사하세요";
+    }
   });
 
   document.getElementById("logout-btn").addEventListener("click", async e => {
